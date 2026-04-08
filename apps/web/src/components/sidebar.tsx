@@ -9,9 +9,13 @@ import {
   MessageCircle,
   Download,
   Network,
+  Activity,
   Settings,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { CompileIndicator } from "./compile-indicator";
+import { useTheme } from "@/lib/theme-context";
 
 const navItems = [
   { href: "/wiki", icon: BookOpen, label: "Wiki" },
@@ -19,6 +23,7 @@ const navItems = [
   { href: "/search", icon: Search, label: "Search" },
   { href: "/ask", icon: MessageCircle, label: "Ask" },
   { href: "/ingest", icon: Download, label: "Ingest" },
+  { href: "/health", icon: Activity, label: "Health" },
   { href: "/settings", icon: Settings, label: "Settings" },
 ];
 
@@ -69,6 +74,8 @@ export function Sidebar() {
     localStorage.setItem(STORAGE_KEY, String(width));
   }, [width]);
 
+  const { theme, toggle } = useTheme();
+
   return (
     <div className="relative shrink-0 flex" style={{ width }}>
       <aside className="w-full h-screen sticky top-0 border-r border-sidebar-border bg-sidebar flex flex-col overflow-hidden">
@@ -107,8 +114,9 @@ export function Sidebar() {
         </nav>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t border-sidebar-border">
-          <p className="text-[10px] text-muted/30">v0.1.0 — MVP</p>
+        <div className="px-4 py-3 border-t border-sidebar-border flex items-center justify-between">
+          <p className="text-[10px] text-muted/30">v0.2.0</p>
+          <ThemeToggle />
         </div>
       </aside>
 
@@ -118,5 +126,18 @@ export function Sidebar() {
         className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-50 hover:bg-accent/20 active:bg-accent/30 transition-colors"
       />
     </div>
+  );
+}
+
+function ThemeToggle() {
+  const { theme, toggle } = useTheme();
+  return (
+    <button
+      onClick={toggle}
+      className="p-1.5 rounded-md text-muted/40 hover:text-muted hover:bg-card transition-colors"
+      title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+    >
+      {theme === "dark" ? <Sun size={13} /> : <Moon size={13} />}
+    </button>
   );
 }

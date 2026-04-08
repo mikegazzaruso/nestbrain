@@ -26,7 +26,6 @@ export async function GET() {
     const dirs = [
       { dir: "concepts", type: "concept" as const },
       { dir: "sources", type: "source" as const },
-      { dir: "outputs", type: "output" as const },
     ];
 
     // Build nodes and extract wikilinks

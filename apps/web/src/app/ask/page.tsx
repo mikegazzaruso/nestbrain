@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Send } from "lucide-react";
+import { Send, Trash2 } from "lucide-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 
 interface QAEntry {
@@ -101,28 +101,51 @@ export default function AskPage() {
 
                 {entry.citations.length > 0 && (
                   <div className="mt-4 pt-3 border-t border-border">
-                    <p className="text-xs text-muted mb-1">Sources:</p>
-                    <div className="flex flex-wrap gap-1">
-                      {entry.citations.map((c, j) => (
-                        <span
-                          key={j}
-                          className="text-xs px-2 py-0.5 rounded-full bg-accent/10 text-accent"
-                        >
-                          {c.replace(/\[\[|\]\]/g, "").split("|").pop()}
-                        </span>
-                      ))}
+                    <p className="text-xs text-muted mb-2">Sources:</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {entry.citations.map((c, j) => {
+                        // Parse [[path|title]] format
+                        const inner = c.replace(/^\[\[|\]\]$/g, "");
+                        const parts = inner.split("|");
+                        const path = parts[0].trim();
+                        const title = (parts[1] ?? parts[0]).trim();
+                        const filePath = path.endsWith(".md") ? path : `${path}.md`;
+                        return (
+                          <a
+                            key={j}
+                            href={`/wiki?path=${encodeURIComponent(filePath)}`}
+                            className="text-xs px-2.5 py-1 rounded-full bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
+                          >
+                            {title}
+                          </a>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
 
                 {entry.savedTo && (
-                  <div className="mt-3">
+                  <div className="mt-3 flex items-center gap-3">
                     <a
                       href={`/wiki?path=${encodeURIComponent(entry.savedTo)}`}
                       className="text-xs text-accent/60 hover:text-accent transition-colors"
                     >
                       Saved to wiki → {entry.savedTo}
                     </a>
+                    <button
+                      onClick={async () => {
+                        await fetch("/api/wiki/delete", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ path: entry.savedTo }),
+                        });
+                        setHistory((prev) => prev.filter((_, idx) => idx !== i));
+                      }}
+                      className="text-xs text-red-400/50 hover:text-red-400 transition-colors flex items-center gap-1"
+                    >
+                      <Trash2 size={11} />
+                      Delete
+                    </button>
                   </div>
                 )}
               </div>
@@ -131,9 +154,49 @@ export default function AskPage() {
 
           {loading && (
             <div className="bg-card border border-border rounded-xl p-6">
-              <div className="flex items-center gap-2 text-sm text-muted">
-                <div className="w-2 h-2 bg-accent rounded-full animate-pulse" />
-                Thinking...
+              <div>
+                {/* Brain animation */}
+                <div className="flex items-center gap-4">
+                  <div className="relative w-10 h-10 flex items-center justify-center">
+                    {/* Orbiting dots */}
+                    <div className="absolute inset-0 animate-[spin_2s_linear_infinite]">
+                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-accent" />
+                    </div>
+                    <div className="absolute inset-0 animate-[spin_3s_linear_infinite_reverse]">
+                      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-purple-400" />
+                    </div>
+                    <div className="absolute inset-0 animate-[spin_2.5s_linear_infinite]">
+                      <div className="absolute top-1/2 right-0 -translate-y-1/2 w-1 h-1 rounded-full bg-green-400" />
+                    </div>
+                    {/* Center glow */}
+                    <div className="w-5 h-5 rounded-full bg-accent/20 flex items-center justify-center animate-pulse">
+                      <div className="w-2.5 h-2.5 rounded-full bg-accent/60" />
+                    </div>
+                  </div>
+
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-foreground/80">Researching your knowledge base</p>
+                    </div>
+                    {/* Animated progress bar */}
+                    <div className="mt-2 h-0.5 w-full bg-border rounded-full overflow-hidden">
+                      <div className="h-full bg-gradient-to-r from-accent via-purple-400 to-accent rounded-full animate-[shimmer_1.5s_ease-in-out_infinite] w-2/3" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Floating keywords */}
+                <div className="mt-3 flex gap-2 overflow-hidden">
+                  {["Searching vectors", "Reading articles", "Composing answer"].map((text, i) => (
+                    <span
+                      key={text}
+                      className="text-[10px] text-muted/40 px-2 py-0.5 rounded-full bg-border/30 animate-pulse"
+                      style={{ animationDelay: `${i * 0.5}s` }}
+                    >
+                      {text}
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
           )}

@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
-:root {
+/* Dark theme (default) */
+.dark {
   --background: #0a0a0a;
   --foreground: #e8e8e8;
   --muted: #888888;
@@ -11,6 +12,20 @@
   --accent-hover: #8bb4ff;
   --sidebar: #111111;
   --sidebar-border: #1e1e1e;
+}
+
+/* Light theme */
+.light {
+  --background: #ffffff;
+  --foreground: #1a1a1a;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --card: #f9fafb;
+  --card-hover: #f3f4f6;
+  --accent: #4f7df0;
+  --accent-hover: #3b6ce0;
+  --sidebar: #f8f9fa;
+  --sidebar-border: #e5e7eb;
 }
 
 @theme inline {
@@ -34,27 +49,20 @@ body {
   font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
 }
 
-/* Scrollbar styling */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+::selection { background: var(--accent); color: var(--background); }
+
+/* Custom animations */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--muted);
-}
-
-/* Selection */
-::selection {
-  background: var(--accent);
-  color: var(--background);
+@property --angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
 }

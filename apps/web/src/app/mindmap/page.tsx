@@ -26,72 +26,192 @@ interface TreeNode {
 const TYPE_CONFIG: Record<string, { color: string; label: string }> = {
   concept: { color: "#6c9cfc", label: "Concepts" },
   source: { color: "#c084fc", label: "Sources" },
-  output: { color: "#34d399", label: "Outputs" },
 };
 
 function buildTree(data: GraphData): TreeNode[] {
   if (data.nodes.length === 0) return [];
+
   const adj = new Map<string, Set<string>>();
   for (const n of data.nodes) adj.set(n.id, new Set());
   for (const l of data.links) { adj.get(l.source)?.add(l.target); adj.get(l.target)?.add(l.source); }
+
   const nodeMap = new Map(data.nodes.map((n) => [n.id, n]));
   const visited = new Set<string>();
   const roots: TreeNode[] = [];
-  const remaining = [...data.nodes].sort((a, b) => b.connections - a.connections);
+
+  // Score each node for "root worthiness"
+  // Concepts > sources. Among concepts: more connections to OTHER concepts = better root.
+  function rootScore(n: GraphNode): number {
+    if (n.type === "source") return -1000; // sources should never be root
+    // Count connections to other concepts only
+    const neighbors = adj.get(n.id) ?? new Set();
+    let conceptConns = 0;
+    for (const nId of neighbors) {
+      const neighbor = nodeMap.get(nId);
+      if (neighbor?.type === "concept") conceptConns++;
+    }
+    return conceptConns * 10 + n.connections;
+  }
+
+  const remaining = [...data.nodes].sort((a, b) => rootScore(b) - rootScore(a));
+
   while (remaining.length > 0) {
     const rootNode = remaining.find((n) => !visited.has(n.id));
     if (!rootNode) break;
+
     const root: TreeNode = { node: rootNode, children: [], x: 0, y: 0, r: 0, depth: 0 };
     visited.add(rootNode.id);
+
+    // BFS: concepts first, then sources as leaves
     const queue: TreeNode[] = [root];
     while (queue.length > 0) {
       const cur = queue.shift()!;
-      for (const nId of adj.get(cur.node.id) ?? new Set()) {
-        if (visited.has(nId)) continue;
-        visited.add(nId);
-        const n = nodeMap.get(nId);
-        if (!n) continue;
+      const neighbors = [...(adj.get(cur.node.id) ?? new Set())];
+
+      // Sort: concepts first (by connections desc), then sources
+      const sorted = neighbors
+        .filter((nId) => !visited.has(nId) && nodeMap.has(nId))
+        .map((nId) => nodeMap.get(nId)!)
+        .sort((a, b) => {
+          if (a.type === "concept" && b.type !== "concept") return -1;
+          if (a.type !== "concept" && b.type === "concept") return 1;
+          return b.connections - a.connections;
+        });
+
+      for (const n of sorted) {
+        if (visited.has(n.id)) continue;
+        visited.add(n.id);
         const child: TreeNode = { node: n, children: [], x: 0, y: 0, r: 0, depth: cur.depth + 1 };
         cur.children.push(child);
         queue.push(child);
       }
-      cur.children.sort((a, b) => b.node.connections - a.node.connections);
     }
+
     roots.push(root);
-    for (let i = remaining.length - 1; i >= 0; i--) { if (visited.has(remaining[i].id)) remaining.splice(i, 1); }
+    for (let i = remaining.length - 1; i >= 0; i--) {
+      if (visited.has(remaining[i].id)) remaining.splice(i, 1);
+    }
   }
-  for (const n of data.nodes) { if (!visited.has(n.id)) roots.push({ node: n, children: [], x: 0, y: 0, r: 0, depth: 0 }); }
+
+  // Orphan nodes
+  for (const n of data.nodes) {
+    if (!visited.has(n.id)) {
+      roots.push({ node: n, children: [], x: 0, y: 0, r: 0, depth: 0 });
+    }
+  }
+
   return roots;
 }
 
 function layoutTree(root: TreeNode, startX: number, startY: number): { width: number; height: number } {
-  const LS = 200, NS = 55;
-  function size(n: TreeNode): number { return n.children.length === 0 ? 1 : n.children.reduce((s, c) => s + size(c), 0); }
-  function lay(n: TreeNode, x: number, yS: number, yE: number, d: number, dir: number) {
-    n.x = x; n.y = (yS + yE) / 2; n.depth = d; n.r = d === 0 ? 20 : Math.max(8, 14 - d * 2);
-    if (n.children.length === 0) return;
-    const tot = n.children.reduce((s, c) => s + size(c), 0);
-    const h = Math.max(yE - yS, tot * NS);
-    const yT = (yS + yE) / 2 - h / 2;
-    let cy = yT;
-    for (const ch of n.children) { const cs = size(ch); const ch2 = (cs / tot) * h; lay(ch, x + LS * dir, cy, cy + ch2, d + 1, dir); cy += ch2; }
+
+  function subtreeSize(n: TreeNode): number {
+    if (n.children.length === 0) return 1;
+    return n.children.reduce((s, c) => s + subtreeSize(c), 0);
   }
-  const tl = size(root); const th = Math.max(tl * NS, 200);
-  if (root.children.length > 1) {
-    const mid = Math.ceil(root.children.length / 2);
-    root.x = startX; root.y = startY; root.depth = 0; root.r = 20;
-    const lc = root.children.slice(0, mid), rc = root.children.slice(mid);
-    const ls = lc.reduce((s, c) => s + size(c), 0), lh = Math.max(ls * NS, 150);
-    let ly = startY - lh / 2;
-    for (const c of lc) { const cs = size(c); const ch = (cs / ls) * lh; lay(c, startX - LS, ly, ly + ch, 1, -1); ly += ch; }
-    const rs = rc.reduce((s, c) => s + size(c), 0), rh = Math.max(rs * NS, 150);
-    let ry = startY - rh / 2;
-    for (const c of rc) { const cs = size(c); const ch = (cs / rs) * rh; lay(c, startX + LS, ry, ry + ch, 1, 1); ry += ch; }
-    return { width: LS * 6, height: Math.max(lh, rh) };
-  } else {
-    lay(root, startX, startY - th / 2, startY + th / 2, 0, 1);
-    return { width: LS * 4, height: th };
+
+  // Radial layout: place children in concentric rings around parent
+  function layoutRadial(parent: TreeNode, children: TreeNode[], depth: number, baseRadius: number, angleStart: number, angleEnd: number) {
+    if (children.length === 0) return;
+
+    // Ensure minimum angular spacing so nodes never overlap
+    const MIN_ARC_DISTANCE = 50; // minimum pixels between adjacent nodes on the arc
+    const minAnglePerNode = MIN_ARC_DISTANCE / baseRadius;
+    const neededAngle = children.length > 1 ? (children.length - 1) * minAnglePerNode : 0;
+    let angleRange = angleEnd - angleStart;
+
+    // If the arc is too tight, expand the radius
+    let r = baseRadius;
+    if (neededAngle > angleRange && children.length > 1) {
+      r = Math.max(baseRadius, (children.length - 1) * MIN_ARC_DISTANCE / angleRange);
+    }
+
+    // Recalculate with actual radius
+    const actualMinAngle = MIN_ARC_DISTANCE / r;
+    const actualNeeded = children.length > 1 ? (children.length - 1) * actualMinAngle : 0;
+
+    // Center the children within the available arc
+    const usedAngle = Math.max(angleRange, actualNeeded);
+    const midAngle = (angleStart + angleEnd) / 2;
+    const effectiveStart = midAngle - usedAngle / 2;
+
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      const t = children.length === 1 ? 0.5 : i / (children.length - 1);
+      const angle = effectiveStart + t * usedAngle;
+
+      const hasGrandchildren = child.children.length > 0;
+      const nodeR = r + (hasGrandchildren ? 20 : 0);
+
+      child.x = parent.x + Math.cos(angle) * nodeR;
+      child.y = parent.y + Math.sin(angle) * nodeR;
+      child.depth = depth;
+      child.r = child.node.type === "source" ? 7 : Math.max(8, 16 - depth * 3);
+
+      // Recursively layout grandchildren
+      if (child.children.length > 0) {
+        const subSpread = Math.max(
+          child.children.length * minAnglePerNode,
+          Math.min(usedAngle / children.length * 2, Math.PI * 0.6)
+        );
+        const nextRadius = 100 + child.children.length * 15;
+        layoutRadial(child, child.children, depth + 1, nextRadius, angle - subSpread / 2, angle + subSpread / 2);
+      }
+    }
   }
+
+  // Root
+  root.x = startX;
+  root.y = startY;
+  root.depth = 0;
+  root.r = 22;
+
+  if (root.children.length === 0) {
+    return { width: 100, height: 100 };
+  }
+
+  // Separate sources from concepts
+  const concepts = root.children.filter((c) => c.node.type === "concept");
+  const sources = root.children.filter((c) => c.node.type !== "concept");
+
+  const totalChildren = concepts.length + sources.length;
+
+  // Distribute all children around 360 degrees
+  // Concepts get the top 270 degrees, sources get the bottom 90 degrees
+  const conceptAngle = sources.length > 0 ? Math.PI * 1.5 : Math.PI * 2;
+  const baseRadius = Math.max(150, 80 + totalChildren * 8);
+
+  // Layout concepts
+  if (concepts.length > 0) {
+    const startAngle = -Math.PI / 2 - conceptAngle / 2; // start from top-left
+    layoutRadial(root, concepts, 1, baseRadius, startAngle, startAngle + conceptAngle);
+  }
+
+  // Layout sources in remaining arc at bottom
+  if (sources.length > 0) {
+    const sourceStartAngle = Math.PI / 2 - Math.PI * 0.25;
+    const sourceEndAngle = Math.PI / 2 + Math.PI * 0.25;
+    const sourceRadius = baseRadius * 0.7;
+    for (let i = 0; i < sources.length; i++) {
+      const t = sources.length === 1 ? 0.5 : i / (sources.length - 1);
+      const angle = sourceStartAngle + t * (sourceEndAngle - sourceStartAngle);
+      sources[i].x = startX + Math.cos(angle) * sourceRadius;
+      sources[i].y = startY + Math.sin(angle) * sourceRadius;
+      sources[i].depth = 1;
+      sources[i].r = 7;
+    }
+  }
+
+  // Calculate bounding box
+  const all = collectNodes([root]);
+  let maxDist = 0;
+  for (const n of all) {
+    const dx = n.x - startX, dy = n.y - startY;
+    maxDist = Math.max(maxDist, Math.sqrt(dx * dx + dy * dy));
+  }
+  const size = maxDist * 2 + 100;
+
+  return { width: size, height: size };
 }
 
 function collectNodes(roots: TreeNode[]): TreeNode[] {
@@ -181,8 +301,9 @@ export default function MindMapPage() {
   function draw() {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    const maybeCtx = canvas.getContext("2d");
+    if (!maybeCtx) return;
+    const ctx = maybeCtx;
     const dpr = window.devicePixelRatio || 1;
     canvas.width = dimensions.width * dpr;
     canvas.height = dimensions.height * dpr;
@@ -316,7 +437,12 @@ export default function MindMapPage() {
     if (!canvas) return;
     function handleWheel(e: WheelEvent) {
       e.preventDefault();
-      zoom.current = Math.min(6, Math.max(0.15, zoom.current * (e.deltaY > 0 ? 0.92 : 1.08)));
+      const factor = e.deltaY > 0 ? 0.92 : 1.08;
+      const newZoom = Math.min(6, Math.max(0.15, zoom.current * factor));
+      // Scale pan to keep viewport center stable
+      const ratio = newZoom / zoom.current;
+      pan.current = { x: pan.current.x * ratio, y: pan.current.y * ratio };
+      zoom.current = newZoom;
       scheduleDraw();
     }
     canvas.addEventListener("wheel", handleWheel, { passive: false });
@@ -357,9 +483,9 @@ export default function MindMapPage() {
 
         {/* Zoom controls */}
         <div className="absolute bottom-6 right-6 z-20 flex flex-col gap-1">
-          <button onClick={() => { zoom.current = Math.min(6, zoom.current * 1.3); scheduleDraw(); }}
+          <button onClick={() => { const nz = Math.min(6, zoom.current * 1.3); const r = nz / zoom.current; pan.current = { x: pan.current.x * r, y: pan.current.y * r }; zoom.current = nz; scheduleDraw(); }}
             className="w-8 h-8 flex items-center justify-center rounded-lg bg-card/80 backdrop-blur-sm border border-border text-foreground/70 hover:text-foreground hover:bg-card transition-colors text-sm font-medium" title="Zoom in">+</button>
-          <button onClick={() => { zoom.current = Math.max(0.15, zoom.current * 0.7); scheduleDraw(); }}
+          <button onClick={() => { const nz = Math.max(0.15, zoom.current * 0.7); const r = nz / zoom.current; pan.current = { x: pan.current.x * r, y: pan.current.y * r }; zoom.current = nz; scheduleDraw(); }}
             className="w-8 h-8 flex items-center justify-center rounded-lg bg-card/80 backdrop-blur-sm border border-border text-foreground/70 hover:text-foreground hover:bg-card transition-colors text-sm font-medium" title="Zoom out">−</button>
           <button onClick={() => { fitToView(); scheduleDraw(); }}
             className="w-8 h-8 flex items-center justify-center rounded-lg bg-card/80 backdrop-blur-sm border border-border text-foreground/70 hover:text-foreground hover:bg-card transition-colors" title="Reset view">

@@ -1,41 +1,35 @@
 "use client";
 
-import { useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ExternalLink } from "lucide-react";
+import { MermaidBlock } from "./mermaid-block";
 
 interface MarkdownRendererProps {
   content: string;
   meta?: Record<string, string>;
 }
 
-export function MarkdownRenderer({ content, meta }: MarkdownRendererProps) {
-  const router = useRouter();
-  const processed = preprocessWikilinks(stripFrontmatter(content));
+// Marker that won't be touched by markdown parser
+const WIKILINK_MARKER = "##WIKILINK##";
 
-  const handleWikilinkClick = useCallback(
-    async (e: React.MouseEvent<HTMLAnchorElement>, linkName: string) => {
-      e.preventDefault();
-      try {
-        const res = await fetch(
-          `/api/wiki/resolve?name=${encodeURIComponent(linkName)}`
-        );
-        const data = await res.json();
-        if (data.path) {
-          router.push(`/wiki?path=${encodeURIComponent(data.path)}`);
-        }
-      } catch {
-        // ignore
-      }
-    },
-    [router]
-  );
+export function MarkdownRenderer({ content, meta }: MarkdownRendererProps) {
+  const body = stripFrontmatter(content);
+
+  // Extract wikilinks BEFORE markdown processing, replace with markers
+  const wikilinks: Array<{ target: string; display: string }> = [];
+  const markedBody = body.replace(/\[\[([^\]]+)\]\]/g, (_, inner) => {
+    const parts = inner.split("|");
+    const target = parts[0].trim();
+    const display = (parts[1] ?? parts[0]).trim();
+    const idx = wikilinks.length;
+    wikilinks.push({ target, display });
+    return `${WIKILINK_MARKER}${idx}${WIKILINK_MARKER}`;
+  });
 
   return (
     <div>
-      {/* Metadata header */}
       {meta && (
         <div className="mb-8 pb-6 border-b border-border/50">
           {meta.type && (
@@ -74,7 +68,6 @@ export function MarkdownRenderer({ content, meta }: MarkdownRendererProps) {
         </div>
       )}
 
-      {/* Article body */}
       <article className="
         [&>h1]:text-[1.75rem] [&>h1]:font-bold [&>h1]:tracking-tight [&>h1]:mb-4 [&>h1]:text-foreground
         [&>h2]:text-xl [&>h2]:font-semibold [&>h2]:tracking-tight [&>h2]:mt-10 [&>h2]:mb-4 [&>h2]:text-foreground
@@ -100,24 +93,14 @@ export function MarkdownRenderer({ content, meta }: MarkdownRendererProps) {
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           components={{
+            // Intercept text nodes to render wikilink markers
+            p: ({ children }) => {
+              return <p>{processChildren(children, wikilinks)}</p>;
+            },
+            li: ({ children }) => {
+              return <li>{processChildren(children, wikilinks)}</li>;
+            },
             a: ({ href, children }) => {
-              if (href?.startsWith("wikilink://")) {
-                const linkName = decodeURIComponent(
-                  href.replace("wikilink://", "")
-                );
-                return (
-                  <a
-                    href="#"
-                    onClick={(e) => handleWikilinkClick(e, linkName)}
-                    className="inline-flex items-baseline gap-0.5 text-accent hover:text-accent-hover transition-colors cursor-pointer group"
-                    title={linkName}
-                  >
-                    <span className="border-b border-accent/20 group-hover:border-accent/60 transition-colors">
-                      {children}
-                    </span>
-                  </a>
-                );
-              }
               return (
                 <a
                   href={href}
@@ -132,9 +115,33 @@ export function MarkdownRenderer({ content, meta }: MarkdownRendererProps) {
                 </a>
               );
             },
+            code: ({ className, children }) => {
+              const match = /language-(\w+)/.exec(className ?? "");
+              const lang = match?.[1];
+              const code = String(children).replace(/\n$/, "");
+
+              if (lang === "mermaid") {
+                return <MermaidBlock code={code} />;
+              }
+
+              if (lang) {
+                return (
+                  <pre className="my-4 p-4 bg-[#0c0c0e] border border-border/50 rounded-xl overflow-x-auto">
+                    <code className={className}>{children}</code>
+                  </pre>
+                );
+              }
+
+              return (
+                <code className="text-accent bg-accent/[0.06] px-1.5 py-0.5 rounded text-[13px] font-mono">
+                  {children}
+                </code>
+              );
+            },
+            pre: ({ children }) => <>{children}</>,
           }}
         >
-          {processed}
+          {markedBody}
         </ReactMarkdown>
       </article>
     </div>
@@ -145,11 +152,56 @@ function stripFrontmatter(content: string): string {
   return content.replace(/^---[\s\S]*?---\n*/, "");
 }
 
-function preprocessWikilinks(text: string): string {
-  return text.replace(/\[\[([^\]]+)\]\]/g, (_, inner) => {
-    const parts = inner.split("|");
-    const target = parts[0].trim();
-    const display = (parts[1] ?? parts[0]).trim();
-    return `[${display}](wikilink://${encodeURIComponent(target)})`;
+/** Process React children to replace wikilink markers with clickable links */
+function processChildren(
+  children: React.ReactNode,
+  wikilinks: Array<{ target: string; display: string }>,
+): React.ReactNode {
+  if (!children) return children;
+
+  const childArray = Array.isArray(children) ? children : [children];
+
+  return childArray.flatMap((child, i) => {
+    if (typeof child !== "string") return child;
+
+    // Split on wikilink markers
+    const parts = child.split(new RegExp(`${WIKILINK_MARKER}(\\d+)${WIKILINK_MARKER}`));
+    if (parts.length === 1) return child;
+
+    return parts.map((part, j) => {
+      // Odd indices are the wikilink index numbers
+      if (j % 2 === 1) {
+        const idx = parseInt(part);
+        const link = wikilinks[idx];
+        if (!link) return part;
+        return <WikiLink key={`${i}-${j}`} target={link.target} display={link.display} />;
+      }
+      return part;
+    });
   });
+}
+
+function WikiLink({ target, display }: { target: string; display: string }) {
+  const [resolvedPath, setResolvedPath] = useState<string | null>(null);
+
+  // Pre-resolve on mount so href is correct for hover preview
+  useEffect(() => {
+    fetch(`/api/wiki/resolve?name=${encodeURIComponent(target)}`)
+      .then((r) => r.json())
+      .then((data) => { if (data.path) setResolvedPath(data.path); })
+      .catch(() => {});
+  }, [target]);
+
+  const href = resolvedPath
+    ? `/wiki?path=${encodeURIComponent(resolvedPath)}`
+    : `/wiki?resolve=${encodeURIComponent(target)}`;
+
+  return (
+    <a
+      href={href}
+      className="text-accent hover:text-accent-hover transition-colors cursor-pointer border-b border-accent/20 hover:border-accent/60"
+    >
+      {display}
+    </a>
+  );
 }

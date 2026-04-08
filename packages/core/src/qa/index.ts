@@ -47,6 +47,17 @@ export async function ask(options: AskOptions): Promise<QAResponse> {
     PROMPTS.answerQuestion,
   );
 
+  // Filter citations to only those actually referenced in the answer
+  const answerLower = response.text.toLowerCase();
+  const usedCitations = citations.filter((c) => {
+    // Extract title from [[path|title]]
+    const inner = c.replace(/^\[\[|\]\]$/g, "");
+    const title = (inner.split("|")[1] ?? inner.split("/").pop() ?? "").toLowerCase();
+    // Check if the title (or significant words from it) appear in the answer
+    const words = title.split(/\s+/).filter((w) => w.length > 3);
+    return words.some((w) => answerLower.includes(w));
+  });
+
   let savedTo: string | undefined;
 
   if (options.save) {
@@ -73,5 +84,5 @@ export async function ask(options: AskOptions): Promise<QAResponse> {
     savedTo = `${WIKI_DIRS.outputs}/${fileName}`;
   }
 
-  return { answer: response.text, citations, savedTo };
+  return { answer: response.text, citations: usedCitations.length > 0 ? usedCitations : citations.slice(0, 3), savedTo };
 }

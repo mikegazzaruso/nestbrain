@@ -289,7 +289,77 @@ export default function SettingsPage() {
             </span>
           )}
         </div>
+
+        {/* Danger Zone */}
+        <DangerZone />
       </div>
     </div>
+  );
+}
+
+function DangerZone() {
+  const [wiping, setWiping] = useState(false);
+  const [wiped, setWiped] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+
+  async function handleWipe() {
+    if (confirmText !== "DELETE") return;
+    setWiping(true);
+    try {
+      const res = await fetch("/api/settings/wipe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "DELETE_EVERYTHING" }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setWiped(true);
+        setConfirmText("");
+      }
+    } catch { /* */ }
+    setWiping(false);
+  }
+
+  return (
+    <section className="mt-12 pt-8 border-t border-red-500/20">
+      <h2 className="text-sm font-medium text-red-400/80 uppercase tracking-wider mb-4">
+        Danger Zone
+      </h2>
+
+      <div className="p-5 rounded-xl bg-red-500/[0.03] border border-red-500/20">
+        <h3 className="text-sm font-medium text-red-400 mb-1">Wipe All Data</h3>
+        <p className="text-xs text-muted/60 leading-relaxed mb-4">
+          This will permanently delete <strong className="text-red-400/80">all ingested sources</strong>,{" "}
+          <strong className="text-red-400/80">all compiled wiki articles</strong>,{" "}
+          <strong className="text-red-400/80">all Q&A outputs</strong>, and the{" "}
+          <strong className="text-red-400/80">vector search index</strong>.
+          This action cannot be undone.
+        </p>
+
+        {wiped ? (
+          <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+            <p className="text-xs text-red-400">All data has been wiped. The knowledge base is empty.</p>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <input
+              type="text"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder='Type "DELETE" to confirm'
+              className="flex-1 px-3 py-2 bg-background border border-red-500/30 rounded-lg text-sm text-foreground placeholder:text-muted/30 focus:outline-none focus:border-red-500/60 focus:ring-1 focus:ring-red-500/20"
+            />
+            <button
+              onClick={handleWipe}
+              disabled={confirmText !== "DELETE" || wiping}
+              className="px-4 py-2 bg-red-500/20 text-red-400 text-sm font-medium rounded-lg hover:bg-red-500/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {wiping && <Loader2 size={14} className="animate-spin" />}
+              Wipe Everything
+            </button>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }

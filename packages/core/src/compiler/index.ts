@@ -105,24 +105,41 @@ export async function compile(options: CompileOptions): Promise<CompileResult> {
     await vectorStore.upsert(slug, title, `${WIKI_DIRS.sources}/${slug}.md`, "source-summary", response.text);
   }
 
-  // Step 2: Extract concepts — but only write NEW ones, skip existing
+  // Step 2: Extract concepts from NEW summaries only (not all 200)
   let conceptsExtracted = 0;
 
-  const allSummaryFiles = await readdir(join(wikiPath, WIKI_DIRS.sources));
-  const allSummaries: string[] = [];
-
-  for (const f of allSummaryFiles) {
-    if (f.endsWith(".md")) {
-      const content = await readFile(join(wikiPath, WIKI_DIRS.sources, f), "utf-8");
-      allSummaries.push(content);
-    }
+  // Collect only the new summaries we just wrote
+  const newSummaries: string[] = [];
+  for (const file of toProcess) {
+    const slug = slugify(basename(file, ".md"));
+    const summaryPath = join(wikiPath, WIKI_DIRS.sources, `${slug}.md`);
+    try {
+      const content = await readFile(summaryPath, "utf-8");
+      newSummaries.push(content);
+    } catch { /* skip */ }
   }
 
-  if (allSummaries.length > 0) {
-    progress("Extracting concepts", `Analyzing ${allSummaries.length} summaries`);
+  // Get list of existing concept names (just names, not full content — cheap)
+  const existingConcepts: string[] = [];
+  try {
+    const conceptFiles = await readdir(join(wikiPath, WIKI_DIRS.concepts));
+    for (const f of conceptFiles) {
+      if (!f.endsWith(".md")) continue;
+      const content = await readFile(join(wikiPath, WIKI_DIRS.concepts, f), "utf-8");
+      const titleMatch = content.match(/title:\s*"([^"]+)"/);
+      existingConcepts.push(titleMatch?.[1] ?? basename(f, ".md"));
+    }
+  } catch { /* no concepts dir yet */ }
+
+  if (newSummaries.length > 0) {
+    progress("Extracting concepts", `Analyzing ${newSummaries.length} new summaries`);
+
+    const existingList = existingConcepts.length > 0
+      ? `\n\nExisting concepts in the knowledge base (DO NOT duplicate these): ${existingConcepts.join(", ")}`
+      : "";
 
     const conceptsResponse = await options.llm.ask(
-      `Here are the source summaries from the knowledge base:\n\n${allSummaries.join("\n\n---\n\n")}`,
+      `Here are the NEW source summaries to extract concepts from:\n\n${newSummaries.join("\n\n---\n\n")}${existingList}`,
       PROMPTS.extractConcepts,
     );
 
@@ -141,13 +158,13 @@ export async function compile(options: CompileOptions): Promise<CompileResult> {
       // JSON parsing failed, skip
     }
 
-    // Step 3: Only write concept articles that don't exist yet
+    // Step 3: Write only NEW concept articles
     let conceptIdx = 0;
     for (const concept of concepts) {
       const conceptSlug = slugify(concept.name);
       const conceptPath = join(wikiPath, WIKI_DIRS.concepts, `${conceptSlug}.md`);
 
-      // Skip if concept article already exists (unless force)
+      // Skip if concept already exists (unless force)
       if (!options.force && (await fileExists(conceptPath))) {
         continue;
       }
@@ -155,8 +172,9 @@ export async function compile(options: CompileOptions): Promise<CompileResult> {
       conceptIdx++;
       progress("Writing concept", `${concept.name} (${conceptIdx}/${concepts.length})`);
 
+      // Pass only the new summaries + list of existing concepts for linking
       const conceptResponse = await options.llm.ask(
-        `Write a wiki article for the concept "${concept.name}". Description: ${concept.description}. Related concepts: ${concept.relatedConcepts.join(", ")}.\n\nUse information from these source summaries:\n\n${allSummaries.join("\n\n---\n\n")}`,
+        `Write a wiki article for the concept "${concept.name}". Description: ${concept.description}. Related concepts: ${concept.relatedConcepts.join(", ")}.\n\nExisting concepts you can link to with [[wikilinks]]: ${existingConcepts.join(", ")}${concept.relatedConcepts.length > 0 ? ", " + concept.relatedConcepts.join(", ") : ""}\n\nSource material:\n\n${newSummaries.join("\n\n---\n\n")}`,
         PROMPTS.writeConcept,
       );
 
@@ -172,6 +190,8 @@ export async function compile(options: CompileOptions): Promise<CompileResult> {
       progress("Embedding", `${concept.name}`);
       await vectorStore.upsert(conceptSlug, concept.name, `${WIKI_DIRS.concepts}/${conceptSlug}.md`, "concept", conceptResponse.text);
 
+      // Add to existing list so next concept in this batch can link to it
+      existingConcepts.push(concept.name);
       conceptsExtracted++;
     }
   }

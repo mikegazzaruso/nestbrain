@@ -23,45 +23,57 @@ export function CompileProvider({ children }: { children: React.ReactNode }) {
   const [message, setMessage] = useState("");
   const [phase, setPhase] = useState("");
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const stopPolling = useCallback(() => {
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-  }, []);
-
-  const pollStatus = useCallback(async () => {
-    try {
-      const res = await fetch("/api/compile/status");
-      const data = await res.json();
-      setStatus(data.status);
-      setMessage(data.message ?? "");
-      setPhase(data.phase ?? "");
-
-      if (data.status !== "compiling") {
-        stopPolling();
-      }
-    } catch {
-      // ignore
-    }
-  }, [stopPolling]);
-
-  // Sync state on mount
-  useEffect(() => {
-    pollStatus().then(() => {
-      // If already compiling when page loads, start polling
-      if (status === "compiling" && !pollingRef.current) {
-        pollingRef.current = setInterval(pollStatus, 1000);
-      }
-    });
-    return stopPolling;
-  }, []);
+  const mountedRef = useRef(true);
 
   function startPolling() {
-    stopPolling();
-    pollingRef.current = setInterval(pollStatus, 1000);
+    if (pollingRef.current) return; // already polling
+    pollingRef.current = setInterval(async () => {
+      if (!mountedRef.current) return;
+      try {
+        const res = await fetch("/api/compile/status");
+        const data = await res.json();
+        if (!mountedRef.current) return;
+
+        setStatus(data.status);
+        setMessage(data.message ?? "");
+        setPhase(data.phase ?? "");
+
+        // Stop polling when not compiling anymore
+        if (data.status !== "compiling" && pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+      } catch {
+        // ignore network errors
+      }
+    }, 800);
   }
+
+  // On mount: check if already compiling, start polling if so
+  useEffect(() => {
+    mountedRef.current = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/compile/status");
+        const data = await res.json();
+        if (!mountedRef.current) return;
+        setStatus(data.status);
+        setMessage(data.message ?? "");
+        setPhase(data.phase ?? "");
+        if (data.status === "compiling") {
+          startPolling();
+        }
+      } catch { /* */ }
+    })();
+
+    return () => {
+      mountedRef.current = false;
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, []);
 
   const compile = useCallback(async (force?: boolean) => {
     if (status === "compiling") return;
@@ -76,9 +88,7 @@ export function CompileProvider({ children }: { children: React.ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ force }),
       });
-    } catch {
-      // ignore
-    }
+    } catch { /* */ }
 
     startPolling();
   }, [status]);

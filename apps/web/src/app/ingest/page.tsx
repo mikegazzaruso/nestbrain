@@ -143,7 +143,7 @@ export default function IngestPage() {
                 type="text"
                 value={source}
                 onChange={(e) => setSource(e.target.value)}
-                placeholder="https://example.com/article"
+                placeholder="URL (web, GitHub, arXiv, YouTube, RSS) or file path"
                 className="w-full pl-12 pr-4 py-3 bg-card border border-border rounded-xl text-sm text-foreground placeholder:text-muted/50 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
                 disabled={ingesting}
                 autoFocus

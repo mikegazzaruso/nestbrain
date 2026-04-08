@@ -3,11 +3,13 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
+import { TranslateButton } from "@/components/translate-button";
 import { useCompile } from "@/lib/compile-context";
 import {
   ChevronRight,
   FileText,
   Folder,
+  Trash2,
   ArrowLeft,
   Link2,
   Hash,
@@ -42,6 +44,8 @@ function WikiPageContent() {
 
   const [tree, setTree] = useState<WikiNode[]>([]);
   const [content, setContent] = useState<string | null>(null);
+  const [originalContent, setOriginalContent] = useState<string | null>(null);
+  const [isTranslated, setIsTranslated] = useState(false);
   const [meta, setMeta] = useState<Record<string, string> | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -49,9 +53,16 @@ function WikiPageContent() {
     loadTree();
   }, []);
 
+  // Refresh tree periodically during compilation and on completion
   useEffect(() => {
-    if (status === "success") {
+    if (status === "success" || status === "error") {
       loadTree();
+      return;
+    }
+    if (status === "compiling") {
+      // Refresh tree every 5s during compilation to show new articles appearing
+      const interval = setInterval(loadTree, 5000);
+      return () => clearInterval(interval);
     }
   }, [status]);
 
@@ -77,10 +88,12 @@ function WikiPageContent() {
   }
 
   async function loadArticle(path: string) {
+    setIsTranslated(false);
     try {
       const res = await fetch(`/api/wiki?path=${encodeURIComponent(path)}`);
       const data = await res.json();
       setContent(data.content ?? null);
+      setOriginalContent(data.content ?? null);
 
       // Parse frontmatter for metadata display
       if (data.content) {
@@ -169,8 +182,9 @@ function WikiPageContent() {
         <div className="flex-1 overflow-auto">
           {content && articlePath ? (
             <div className="max-w-[720px] mx-auto py-10 px-8">
-              {/* Breadcrumb */}
-              <div className="flex items-center gap-1.5 text-[11px] text-muted/50 mb-6">
+              {/* Breadcrumb + Translate */}
+              <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-1.5 text-[11px] text-muted/50">
                 <a
                   href="/wiki"
                   className="hover:text-muted transition-colors"
@@ -191,6 +205,38 @@ function WikiPageContent() {
                     </span>
                   </span>
                 ))}
+              </div>
+              <div className="flex items-center gap-2">
+                <TranslateButton
+                  content={content}
+                  onTranslated={(translated) => {
+                    setContent(translated);
+                    setIsTranslated(true);
+                  }}
+                  onReset={() => {
+                    setContent(originalContent);
+                    setIsTranslated(false);
+                  }}
+                  isTranslated={isTranslated}
+                />
+                {articlePath.startsWith("outputs/") && (
+                  <button
+                    onClick={async () => {
+                      if (!confirm("Delete this output?")) return;
+                      await fetch("/api/wiki/delete", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ path: articlePath }),
+                      });
+                      window.location.href = "/wiki";
+                    }}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                  >
+                    <Trash2 size={12} />
+                    Delete
+                  </button>
+                )}
+              </div>
               </div>
 
               <MarkdownRenderer content={content} meta={meta ?? undefined} />

@@ -1,4 +1,4 @@
-export { ingest } from "./ingest";
+export { ingest, ingestBulk, ingestRss } from "./ingest";
 export type { IngestOptions, IngestResult } from "./ingest";
 
 export { compile } from "./compiler";
