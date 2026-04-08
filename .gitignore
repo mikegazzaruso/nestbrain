@@ -10,6 +10,7 @@ out/
 data/raw/*
 data/wiki/*
 data/chromadb/*
+data/settings.json
 !data/raw/.gitkeep
 !data/wiki/.gitkeep
 !data/chromadb/.gitkeep
