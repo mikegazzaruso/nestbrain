@@ -1,0 +1,18 @@
+{
+  "name": "@mindnest/db",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint src/",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mindnest/shared": "workspace:*",
+    "chromadb": "^1.9.2",
+    "chromadb-default-embed": "^2.13.2"
+  }
+}

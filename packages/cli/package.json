@@ -1,0 +1,19 @@
+{
+  "name": "@mindnest/cli",
+  "version": "0.1.0",
+  "private": true,
+  "bin": {
+    "mindnest": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint src/",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mindnest/core": "workspace:*",
+    "@mindnest/shared": "workspace:*",
+    "commander": "^13.1.0"
+  }
+}
