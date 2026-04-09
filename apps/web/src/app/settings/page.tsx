@@ -24,6 +24,7 @@ export default function SettingsPage() {
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(false);
+  const [autoCompile, setAutoCompile] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -39,6 +40,7 @@ export default function SettingsPage() {
           setOpenaiApiKey(data.llm.openaiApiKey ?? "");
           setOpenaiModel(data.llm.openaiModel ?? "gpt-4o");
         }
+        setAutoCompile(data.autoCompile ?? false);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -88,6 +90,7 @@ export default function SettingsPage() {
             openaiApiKey,
             openaiModel,
           },
+          autoCompile,
         }),
       });
       setSaved(true);
@@ -267,6 +270,35 @@ export default function SettingsPage() {
               </div>
             </div>
           )}
+        </section>
+
+        {/* Auto-Compile */}
+        <section className="mb-10">
+          <h2 className="text-sm font-medium text-muted/70 uppercase tracking-wider mb-4">
+            Compilation
+          </h2>
+          <div className="p-5 rounded-xl bg-card border border-border">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Auto-compile after ingest</p>
+                <p className="text-[11px] text-muted/60 leading-relaxed mt-1">
+                  Automatically compile the knowledge base after adding new sources.
+                </p>
+              </div>
+              <button
+                onClick={() => setAutoCompile(!autoCompile)}
+                className={`relative w-10 h-[22px] rounded-full transition-colors ${
+                  autoCompile ? "bg-accent" : "bg-border"
+                }`}
+              >
+                <span
+                  className={`absolute top-[3px] h-4 w-4 rounded-full bg-white transition-transform ${
+                    autoCompile ? "left-[22px]" : "left-[3px]"
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
         </section>
 
         {/* Save button */}

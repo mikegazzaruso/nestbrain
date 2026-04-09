@@ -43,3 +43,9 @@ pnpm-debug.log*
 
 # Test coverage
 coverage/
+
+# Internal docs
+ANTHROPIC.md
+CLAUDE.md
+DESIDERATA.md
+DEVELOPMENT_CONTRACT.md

@@ -81,10 +81,13 @@ export function Sidebar() {
       <aside className="w-full h-screen sticky top-0 border-r border-sidebar-border bg-sidebar flex flex-col overflow-hidden">
         {/* Logo */}
         <Link href="/" className="block px-5 py-4 border-b border-sidebar-border">
-          <h1 className="text-lg font-semibold tracking-tight">
-            <span className="text-accent">Mind</span>Nest
-          </h1>
-          <p className="text-[11px] text-muted/50 mt-0.5">Knowledge Base</p>
+          <div className="flex items-baseline gap-2">
+            <h1 className="text-lg font-semibold tracking-tight">
+              <span className="text-accent">Mind</span>Nest
+            </h1>
+            <span className="text-[10px] text-muted/40 italic">by NextEpochs</span>
+          </div>
+          <p className="text-[11px] text-muted/60 mt-0.5">v0.9.1</p>
         </Link>
 
         {/* Compile indicator — right under logo */}
@@ -115,7 +118,7 @@ export function Sidebar() {
 
         {/* Footer */}
         <div className="px-4 py-3 border-t border-sidebar-border flex items-center justify-between">
-          <p className="text-[10px] text-muted/30">v0.2.0</p>
+          <p className="text-[10px] text-muted/30">MindNest</p>
           <ThemeToggle />
         </div>
       </aside>

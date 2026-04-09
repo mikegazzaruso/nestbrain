@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Globe,
   Upload,
@@ -9,7 +10,10 @@ import {
   Loader2,
   FileUp,
   FileText,
+  ArrowUp,
+  Settings as SettingsIcon,
 } from "lucide-react";
+import { useCompile } from "@/lib/compile-context";
 
 interface IngestEntry {
   source: string;
@@ -25,17 +29,51 @@ interface IngestedSource {
   ingestedAt: string;
 }
 
+interface DuplicateInfo {
+  source: string;
+  existingTitle: string;
+  retryFn: () => Promise<void>;
+}
+
 export default function IngestPage() {
   const [source, setSource] = useState("");
   const [entries, setEntries] = useState<IngestEntry[]>([]);
   const [ingesting, setIngesting] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [sources, setSources] = useState<IngestedSource[]>([]);
+  const [showCompileToast, setShowCompileToast] = useState(false);
+  const [autoCompile, setAutoCompile] = useState(false);
+  const [duplicatePrompt, setDuplicatePrompt] = useState<DuplicateInfo | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const router = useRouter();
+  const { compile, status: compileStatus } = useCompile();
 
   useEffect(() => {
     loadSources();
+    loadAutoCompileSetting();
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
   }, []);
+
+  async function loadAutoCompileSetting() {
+    try {
+      const res = await fetch("/api/settings");
+      const data = await res.json();
+      setAutoCompile(data.autoCompile ?? false);
+    } catch { /* ignore */ }
+  }
+
+  function triggerPostIngest() {
+    if (autoCompile) {
+      if (compileStatus !== "compiling") compile();
+    } else {
+      setShowCompileToast(true);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = setTimeout(() => setShowCompileToast(false), 6000);
+    }
+  }
 
   async function loadSources() {
     try {
@@ -53,23 +91,41 @@ export default function IngestPage() {
 
     const src = source.trim();
     setSource("");
-    await doIngest(src, async () => {
-      const res = await fetch("/api/ingest", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source: src }),
-      });
-      return res.json();
-    });
+    await doIngest(src, (skipDup) => fetchIngestUrl(src, skipDup));
   }
 
-  async function doIngest(label: string, fetcher: () => Promise<unknown>) {
+  async function fetchIngestUrl(src: string, skipDuplicateCheck: boolean) {
+    const res = await fetch("/api/ingest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: src, skipDuplicateCheck }),
+    });
+    return res.json();
+  }
+
+  async function doIngest(label: string, fetcher: (skipDup: boolean) => Promise<Record<string, unknown>>) {
     setIngesting(true);
     const idx = entries.length;
     setEntries((prev) => [...prev, { source: label, status: "pending" }]);
 
     try {
-      const data = (await fetcher()) as Record<string, unknown>;
+      const data = await fetcher(false);
+
+      if (data.duplicate) {
+        // Remove pending entry and show duplicate dialog
+        setEntries((prev) => prev.filter((_, i) => i !== idx));
+        setIngesting(false);
+        setDuplicatePrompt({
+          source: label,
+          existingTitle: data.existingTitle as string,
+          retryFn: async () => {
+            setDuplicatePrompt(null);
+            await doIngest(label, () => fetcher(true));
+          },
+        });
+        return;
+      }
+
       if (data.error) {
         setEntries((prev) =>
           prev.map((e, i) =>
@@ -91,6 +147,7 @@ export default function IngestPage() {
           )
         );
         loadSources();
+        triggerPostIngest();
       }
     } catch {
       setEntries((prev) =>
@@ -105,9 +162,10 @@ export default function IngestPage() {
   async function handleFiles(files: FileList | null) {
     if (!files) return;
     for (const file of Array.from(files)) {
-      const formData = new FormData();
-      formData.append("file", file);
-      await doIngest(`📄 ${file.name}`, async () => {
+      await doIngest(`📄 ${file.name}`, async (skipDup) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        if (skipDup) formData.append("skipDuplicateCheck", "true");
         const res = await fetch("/api/ingest/upload", {
           method: "POST",
           body: formData,
@@ -268,6 +326,83 @@ export default function IngestPage() {
           </div>
         )}
       </div>
+
+      {/* Duplicate source dialog */}
+      {duplicatePrompt && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl p-6 max-w-sm mx-4 animate-toast-in">
+            <div className="flex items-center gap-3 mb-3">
+              <AlertCircle size={20} className="text-amber-400 shrink-0" />
+              <h3 className="text-sm font-semibold text-foreground">
+                Duplicate source
+              </h3>
+            </div>
+            <p className="text-xs text-muted/70 leading-relaxed mb-5">
+              <span className="font-medium text-foreground">&ldquo;{duplicatePrompt.existingTitle}&rdquo;</span>{" "}
+              has already been ingested. Do you want to add it again?
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setDuplicatePrompt(null)}
+                className="px-4 py-2 text-xs text-muted hover:text-foreground border border-border rounded-lg hover:bg-card-hover transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => duplicatePrompt.retryFn()}
+                className="px-4 py-2 text-xs bg-accent text-background font-medium rounded-lg hover:bg-accent-hover transition-colors"
+              >
+                Add anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Compile reminder toast */}
+      {showCompileToast && (
+        <>
+          {/* Arrow pointing to compile button in sidebar */}
+          <div className="fixed left-[60px] top-[88px] z-[60] animate-compile-arrow">
+            <div className="flex items-center gap-1">
+              <ArrowUp
+                size={28}
+                className="text-accent -rotate-90 animate-pulse"
+                strokeWidth={3}
+              />
+            </div>
+          </div>
+
+          {/* Toast notification */}
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] animate-toast-in">
+            <div className="bg-card border border-border rounded-xl shadow-lg px-5 py-4 max-w-md flex items-start gap-3">
+              <AlertCircle size={18} className="text-accent shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <p className="text-foreground font-medium mb-1">
+                  Don&apos;t forget to compile!
+                </p>
+                <p className="text-muted/70 text-xs leading-relaxed">
+                  Click the compile button in the sidebar to process your new sources. Or enable auto-compile in{" "}
+                  <button
+                    onClick={() => router.push("/settings")}
+                    className="text-accent hover:underline font-medium inline-flex items-center gap-0.5"
+                  >
+                    <SettingsIcon size={11} />
+                    Settings
+                  </button>
+                  .
+                </p>
+              </div>
+              <button
+                onClick={() => setShowCompileToast(false)}
+                className="text-muted/40 hover:text-muted text-lg leading-none shrink-0 ml-2"
+              >
+                &times;
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

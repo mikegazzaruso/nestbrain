@@ -7,13 +7,35 @@ import { getDataPaths } from "@/lib/config";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { source, type } = body;
+    const { source, type, skipDuplicateCheck } = body;
 
     if (!source) {
       return NextResponse.json({ error: "source is required" }, { status: 400 });
     }
 
     const { rawPath } = getDataPaths();
+
+    // Check for duplicate source unless explicitly skipped
+    if (!skipDuplicateCheck) {
+      try {
+        const files = await readdir(rawPath);
+        const srcTrimmed = source.trim();
+        for (const file of files) {
+          if (!file.endsWith(".md")) continue;
+          const content = await readFile(join(rawPath, file), "utf-8");
+          const sourceUrlMatch = content.match(/sourceUrl:\s*"([^"]+)"/);
+          if (sourceUrlMatch?.[1] === srcTrimmed) {
+            const titleMatch = content.match(/title:\s*"([^"]+)"/);
+            return NextResponse.json({
+              duplicate: true,
+              existingTitle: titleMatch?.[1] ?? file.replace(".md", ""),
+              existingFile: file,
+            });
+          }
+        }
+      } catch { /* rawPath might not exist yet */ }
+    }
+
     const result = await ingest({ source, type, rawPath });
 
     return NextResponse.json(result);

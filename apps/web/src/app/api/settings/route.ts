@@ -36,6 +36,7 @@ export async function PUT(request: NextRequest) {
             ? body.llm.openaiApiKey
             : current.llm.openaiApiKey,
       },
+      autoCompile: body.autoCompile ?? current.autoCompile ?? false,
     };
 
     await saveSettings(updated);
