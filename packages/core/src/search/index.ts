@@ -1,7 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join, basename, resolve } from "node:path";
-import type { SearchResult } from "@mindnest/shared";
-import { WIKI_DIRS } from "@mindnest/shared";
+import type { SearchResult } from "@nestbrain/shared";
+import { WIKI_DIRS } from "@nestbrain/shared";
 import { VectorStore } from "../vectorstore";
 
 export interface SearchOptions {

@@ -1,14 +1,14 @@
-# MindNest
+# NestBrain
 
 **LLM-powered personal knowledge base — now as a native Mac/Windows app.** Raw sources go in, a structured Markdown wiki comes out — compiled, linked, and maintained entirely by AI, inside a dedicated workspace with an integrated terminal.
 
-![MindNest](https://img.shields.io/badge/status-Native_App-brightgreen) ![TypeScript](https://img.shields.io/badge/TypeScript-100%25-blue) ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
+![NestBrain](https://img.shields.io/badge/status-Native_App-brightgreen) ![TypeScript](https://img.shields.io/badge/TypeScript-100%25-blue) ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
 ---
 
-## What is MindNest?
+## What is NestBrain?
 
-MindNest ingests raw documents — articles, papers, PDFs, GitHub repos, arXiv papers, YouTube transcripts, RSS feeds — and uses an LLM to compile them into an interconnected wiki of Markdown files. Everything lives inside a **NestBrain** workspace directory on your disk, browsable through a stunning dark-mode native UI, compatible with Obsidian, and queryable via natural language.
+NestBrain ingests raw documents — articles, papers, PDFs, GitHub repos, arXiv papers, YouTube transcripts, RSS feeds — and uses an LLM to compile them into an interconnected wiki of Markdown files. Everything lives inside a **NestBrain** workspace directory on your disk, browsable through a stunning dark-mode native UI, compatible with Obsidian, and queryable via natural language.
 
 **You feed sources. The LLM builds the knowledge base. You explore it.**
 
@@ -65,11 +65,11 @@ MindNest ingests raw documents — articles, papers, PDFs, GitHub repos, arXiv p
 ### Run the native desktop app (development)
 
 ```bash
-git clone git@github.com:mikegazzaruso/MindNest.git
-cd MindNest
+git clone git@github.com:mikegazzaruso/NestBrain.git
+cd NestBrain
 pnpm install
 pnpm desktop:build
-pnpm --filter @mindnest/desktop start
+pnpm --filter @nestbrain/desktop start
 ```
 
 On first launch the onboarding flow walks you through creating your NestBrain workspace and choosing an LLM provider.
@@ -96,7 +96,7 @@ Open [http://localhost:3000](http://localhost:3000).
 ## Project Structure
 
 ```
-MindNest/
+NestBrain/
 ├── apps/
 │   ├── desktop/            # Electron main process, preload, icons, packaging
 │   │   ├── src/main.ts     # PTY manager, IPC, Next.js standalone wrapper
@@ -127,7 +127,7 @@ MindNest/
 │   ├── Projects/           # Per‑project directories with integrated terminals
 │   ├── Skills/
 │   ├── Team/
-│   └── .mindnest/          # Internal state (raw sources, settings, vector index)
+│   └── .nestbrain/          # Internal state (raw sources, settings, vector index)
 └── docker/                 # Docker configuration (web mode)
 ```
 
@@ -162,7 +162,7 @@ YouTube / RSS / .md                        │
 ```
 
 ### Ingest
-URLs are fetched and converted to Markdown (Readability + Turndown). PDFs are text‑extracted. GitHub repos pull README + key files + file tree. arXiv papers download and extract the full PDF. YouTube fetches transcripts. RSS feeds ingest multiple entries. Everything lands in `NestBrain/.mindnest/raw/`. Duplicate sources are detected and require confirmation.
+URLs are fetched and converted to Markdown (Readability + Turndown). PDFs are text‑extracted. GitHub repos pull README + key files + file tree. arXiv papers download and extract the full PDF. YouTube fetches transcripts. RSS feeds ingest multiple entries. Everything lands in `NestBrain/.nestbrain/raw/`. Duplicate sources are detected and require confirmation.
 
 ### Compile
 The LLM processes **only new/changed sources** (incremental). For each new source:
@@ -229,20 +229,20 @@ Supports all models: GPT‑4o, GPT‑4 Turbo, GPT‑5, o1, o3, o4 series. The pr
 All commands are fully functional alongside the desktop app:
 
 ```bash
-mindnest ingest <source>       # Ingest any supported source
-mindnest compile               # Compile wiki (incremental)
-mindnest compile --force       # Recompile everything
-mindnest ask "your question"   # Ask with citations
-mindnest search "query"        # Hybrid search
-mindnest lint                  # Run health check
-mindnest serve                 # Start web UI
+nestbrain ingest <source>       # Ingest any supported source
+nestbrain compile               # Compile wiki (incremental)
+nestbrain compile --force       # Recompile everything
+nestbrain ask "your question"   # Ask with citations
+nestbrain search "query"        # Hybrid search
+nestbrain lint                  # Run health check
+nestbrain serve                 # Start web UI
 ```
 
 ---
 
 ## Configuration
 
-Settings are managed through the **Settings** page in the app. They are persisted in `NestBrain/.mindnest/settings.json`, which includes:
+Settings are managed through the **Settings** page in the app. They are persisted in `NestBrain/.nestbrain/settings.json`, which includes:
 
 - LLM provider (Claude CLI / OpenAI) + model
 - OpenAI API key
@@ -261,7 +261,7 @@ Settings are managed through the **Settings** page in the app. They are persiste
 - Images with relative paths
 - Graph view shows concept connections
 
-Just open `NestBrain/Library/Knowledge/` as a vault in Obsidian — you can work on the same knowledge base from both MindNest and Obsidian simultaneously.
+Just open `NestBrain/Library/Knowledge/` as a vault in Obsidian — you can work on the same knowledge base from both NestBrain and Obsidian simultaneously.
 
 ---
 

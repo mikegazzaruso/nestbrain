@@ -8,7 +8,7 @@ import { ingestGithub } from "./github";
 import { ingestArxiv } from "./arxiv";
 import { ingestYoutube } from "./youtube";
 import { ingestRss } from "./rss";
-import type { SourceType } from "@mindnest/shared";
+import type { SourceType } from "@nestbrain/shared";
 
 export interface IngestOptions {
   source: string;

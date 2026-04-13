@@ -30,7 +30,7 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
 RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 mindnest
+    adduser --system --uid 1001 nestbrain
 
 # Copy standalone Next.js output
 COPY --from=builder /app/apps/web/.next/standalone ./
@@ -39,9 +39,9 @@ COPY --from=builder /app/apps/web/public ./apps/web/public
 
 # Data directories
 RUN mkdir -p /app/data/raw/assets /app/data/wiki/sources /app/data/wiki/concepts /app/data/wiki/outputs /app/data/chromadb && \
-    chown -R mindnest:nodejs /app/data
+    chown -R nestbrain:nodejs /app/data
 
-USER mindnest
+USER nestbrain
 EXPOSE 3000
 
 CMD ["node", "apps/web/server.js"]

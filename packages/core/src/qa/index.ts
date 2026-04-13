@@ -1,7 +1,7 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import type { QAResponse } from "@mindnest/shared";
-import { WIKI_DIRS } from "@mindnest/shared";
+import type { QAResponse } from "@nestbrain/shared";
+import { WIKI_DIRS } from "@nestbrain/shared";
 import type { LLMProviderInterface } from "../llm/provider";
 import { PROMPTS } from "../llm/prompts";
 import { search } from "../search";

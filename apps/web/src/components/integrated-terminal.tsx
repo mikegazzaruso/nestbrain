@@ -21,7 +21,7 @@ export function IntegratedTerminal({
   const fitRef = useRef<FitAddon | null>(null);
 
   useEffect(() => {
-    if (!containerRef.current || typeof window === "undefined" || !window.mindnest) {
+    if (!containerRef.current || typeof window === "undefined" || !window.nestbrain) {
       return;
     }
 
@@ -65,7 +65,7 @@ export function IntegratedTerminal({
       fit.fit();
     } catch { /* ignore */ }
 
-    const mn = window.mindnest!;
+    const mn = window.nestbrain!;
 
     const offData = mn.terminal.onData(sessionId, (data) => {
       term.write(data);
@@ -109,13 +109,13 @@ export function IntegratedTerminal({
 
   // Refit when becoming active or panel becomes visible again
   useEffect(() => {
-    if (active && visible && fitRef.current && termRef.current && typeof window !== "undefined" && window.mindnest) {
+    if (active && visible && fitRef.current && termRef.current && typeof window !== "undefined" && window.nestbrain) {
       // Small delay so the container has its final size
       const t = setTimeout(() => {
         try {
           fitRef.current?.fit();
           if (termRef.current) {
-            window.mindnest!.terminal.resize(
+            window.nestbrain!.terminal.resize(
               sessionId,
               termRef.current.cols,
               termRef.current.rows,

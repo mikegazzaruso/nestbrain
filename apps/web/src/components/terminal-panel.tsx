@@ -8,7 +8,7 @@ import { X, Terminal as TerminalIcon, ChevronDown } from "lucide-react";
 const MIN_HEIGHT = 120;
 const MAX_HEIGHT = 600;
 const DEFAULT_HEIGHT = 280;
-const STORAGE_KEY = "mindnest-terminal-height";
+const STORAGE_KEY = "nestbrain-terminal-height";
 
 export function TerminalPanel() {
   const { sessions, activeId, panelOpen, setActive, closeTerminal, togglePanel } =

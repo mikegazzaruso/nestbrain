@@ -42,8 +42,8 @@ export function TerminalProvider({ children }: { children: ReactNode }) {
   const [panelOpen, setPanelOpen] = useState(false);
 
   const openTerminal = useCallback(async (cwd: string, label: string) => {
-    if (typeof window === "undefined" || !window.mindnest) return;
-    const { id } = await window.mindnest.terminal.create({
+    if (typeof window === "undefined" || !window.nestbrain) return;
+    const { id } = await window.nestbrain.terminal.create({
       cwd,
       cols: 100,
       rows: 24,
@@ -58,8 +58,8 @@ export function TerminalProvider({ children }: { children: ReactNode }) {
 
   const closeTerminal = useCallback(
     (id: string) => {
-      if (typeof window !== "undefined" && window.mindnest) {
-        window.mindnest.terminal.kill(id);
+      if (typeof window !== "undefined" && window.nestbrain) {
+        window.nestbrain.terminal.kill(id);
       }
       setSessions((s) => {
         const next = s.filter((x) => x.id !== id);
@@ -84,9 +84,9 @@ export function TerminalProvider({ children }: { children: ReactNode }) {
       setPanelOpen((p) => !p);
       return;
     }
-    if (typeof window === "undefined" || !window.mindnest) return;
+    if (typeof window === "undefined" || !window.nestbrain) return;
     try {
-      const bootstrap = await window.mindnest.getBootstrap();
+      const bootstrap = await window.nestbrain.getBootstrap();
       const cwd = bootstrap.nestBrainPath || process.env.HOME || "/";
       await openTerminal(cwd, "NestBrain");
     } catch { /* ignore */ }

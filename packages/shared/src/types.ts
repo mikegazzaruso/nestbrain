@@ -1,5 +1,5 @@
 // ============================================================
-// MindNest — Shared Types
+// NestBrain — Shared Types
 // ============================================================
 
 /** Supported raw source types */
@@ -40,8 +40,8 @@ export interface WikiArticleMeta {
 /** LLM provider configuration */
 export type LLMProvider = "claude-cli" | "openai" | "ollama";
 
-/** MindNest configuration (mindnest.yaml) */
-export interface MindNestConfig {
+/** NestBrain configuration (nestbrain.yaml) */
+export interface NestBrainConfig {
   wiki: {
     name: string;
     path: string;

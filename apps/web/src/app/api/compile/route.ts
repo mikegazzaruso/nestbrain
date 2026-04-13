@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { compile } from "@mindnest/core";
+import { compile } from "@nestbrain/core";
 import { getDataPaths } from "@/lib/config";
 import { getLLM } from "@/lib/llm";
 import { getCompileState, setCompileState } from "@/lib/compile-state";

@@ -11,7 +11,7 @@ export function getChromaClient(path?: string): ChromaClient {
   return client;
 }
 
-export async function getOrCreateCollection(name: string = "mindnest") {
+export async function getOrCreateCollection(name: string = "nestbrain") {
   const chroma = getChromaClient();
   return chroma.getOrCreateCollection({ name });
 }

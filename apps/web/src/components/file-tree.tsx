@@ -87,10 +87,10 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
 
   // Auto refresh when the native file watcher reports a change
   useEffect(() => {
-    if (typeof window === "undefined" || !window.mindnest?.fs?.onChange) {
+    if (typeof window === "undefined" || !window.nestbrain?.fs?.onChange) {
       return;
     }
-    const off = window.mindnest.fs.onChange(refresh);
+    const off = window.nestbrain.fs.onChange(refresh);
     return off;
   }, [refresh]);
 
@@ -121,7 +121,7 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
   );
 
   async function handleRename(oldPath: string, newName: string) {
-    if (!window.mindnest?.fs?.rename) return;
+    if (!window.nestbrain?.fs?.rename) return;
     const oldBase = oldPath.slice(oldPath.lastIndexOf("/") + 1);
     // Same name (or blur/esc) → just close the rename input, don't hit IPC
     if (!newName || newName === oldBase) {
@@ -129,7 +129,7 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
       return;
     }
     try {
-      await window.mindnest.fs.rename(oldPath, newName);
+      await window.nestbrain.fs.rename(oldPath, newName);
       setRenamingPath(null);
       // Clear stale selection (path changed under us)
       if (selectedPath === oldPath) setSelectedPath(null);
@@ -140,14 +140,14 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
   }
 
   async function handleDelete(targetPath: string, name: string, isDir: boolean) {
-    if (!window.mindnest?.fs?.delete) return;
+    if (!window.nestbrain?.fs?.delete) return;
     const kind = isDir ? "folder" : "file";
     const ok = window.confirm(
       `Delete ${kind} "${name}"?${isDir ? "\nAll its contents will be permanently removed." : ""}\n\nThis action cannot be undone.`,
     );
     if (!ok) return;
     try {
-      await window.mindnest.fs.delete(targetPath);
+      await window.nestbrain.fs.delete(targetPath);
       if (selectedPath === targetPath) setSelectedPath(null);
     } catch (err) {
       window.alert(err instanceof Error ? err.message : "Delete failed");
@@ -171,7 +171,7 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
   }
 
   async function confirmCreate(name: string) {
-    if (!creating || !window.mindnest?.fs) return;
+    if (!creating || !window.nestbrain?.fs) return;
     const trimmed = name.trim();
     if (!trimmed) {
       setCreating(null);
@@ -184,9 +184,9 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
     const fullPath = `${creating.parent}/${trimmed}`;
     try {
       if (creating.kind === "dir") {
-        await window.mindnest.fs.createDir(fullPath);
+        await window.nestbrain.fs.createDir(fullPath);
       } else {
-        await window.mindnest.fs.writeFile(fullPath, "");
+        await window.nestbrain.fs.writeFile(fullPath, "");
       }
       setCreating(null);
       setCreateError(null);
@@ -550,9 +550,9 @@ function TreeNode({
 
   useEffect(() => {
     if (!isDir || !isOpen) return;
-    if (typeof window === "undefined" || !window.mindnest) return;
+    if (typeof window === "undefined" || !window.nestbrain) return;
     let cancelled = false;
-    window.mindnest.fs.list(path).then((list) => {
+    window.nestbrain.fs.list(path).then((list) => {
       if (!cancelled) setChildren(list);
     });
     return () => {

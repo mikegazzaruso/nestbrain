@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { v4 as uuidv4 } from "uuid";
-import type { SourceType } from "@mindnest/shared";
+import type { SourceType } from "@nestbrain/shared";
 
 export function generateId(): string {
   return uuidv4().slice(0, 8);

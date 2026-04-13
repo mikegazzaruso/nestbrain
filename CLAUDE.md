@@ -1,18 +1,18 @@
-# MindNest
+# NestBrain
 
 LLM-powered personal knowledge base platform. Raw sources go in, a structured Markdown wiki comes out — compiled, linked, and maintained entirely by AI.
 
 ## Project Overview
 
-MindNest ingests raw documents (articles, papers, repos, images) and uses LLM agents to compile them into an interconnected wiki of Markdown files. The wiki is viewable in Obsidian or a built-in web UI. Users query the knowledge base, and every interaction enriches it over time.
+NestBrain ingests raw documents (articles, papers, repos, images) and uses LLM agents to compile them into an interconnected wiki of Markdown files. The wiki is viewable in Obsidian or a built-in web UI. Users query the knowledge base, and every interaction enriches it over time.
 
 ## Architecture
 
 ```
-MindNest_OK/
+NestBrain_OK/
 ├── CLAUDE.md            # This file — project guide for the LLM agent
 ├── DESIDERATA.md        # Requirements and design document
-├── mindnest.yaml        # Project configuration
+├── nestbrain.yaml        # Project configuration
 ├── raw/                 # Source documents (user-provided)
 │   ├── assets/          # Downloaded images and media
 │   └── ...              # Articles, papers, PDFs, etc.
@@ -43,18 +43,18 @@ MindNest_OK/
 - **LLM integration**: Anthropic SDK (Claude API) — used at runtime for wiki compilation, Q&A, linting
 - **Web UI**: FastAPI + lightweight frontend
 - **Search**: Whoosh or similar lightweight full-text search
-- **Config**: YAML (`mindnest.yaml`)
+- **Config**: YAML (`nestbrain.yaml`)
 - **Package manager**: uv (preferred) or pip
 
 ## Key Commands
 
 ```bash
-mindnest ingest <source>       # Ingest a URL, file, or directory into raw/
-mindnest compile               # Compile raw/ into wiki/ (incremental)
-mindnest ask "<question>"      # Ask a question against the wiki
-mindnest search "<query>"      # Full-text search over the wiki
-mindnest lint                  # Run health checks on the wiki
-mindnest serve                 # Start the web UI
+nestbrain ingest <source>       # Ingest a URL, file, or directory into raw/
+nestbrain compile               # Compile raw/ into wiki/ (incremental)
+nestbrain ask "<question>"      # Ask a question against the wiki
+nestbrain search "<query>"      # Full-text search over the wiki
+nestbrain lint                  # Run health checks on the wiki
+nestbrain serve                 # Start the web UI
 ```
 
 ## Coding Conventions
@@ -112,5 +112,5 @@ Content here...
 
 - The `raw/` directory contains user data — never modify or delete its contents.
 - The `wiki/` directory is fully regenerable from `raw/` — treat it as a build artifact.
-- API keys must come from environment variables or `mindnest.yaml`, never hardcoded.
+- API keys must come from environment variables or `nestbrain.yaml`, never hardcoded.
 - All file paths in the wiki must be relative for portability.

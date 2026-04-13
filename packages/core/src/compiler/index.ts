@@ -1,7 +1,7 @@
 import { readFile, writeFile, readdir, mkdir, access } from "node:fs/promises";
 import { join, resolve, basename } from "node:path";
-import type { CompileResult } from "@mindnest/shared";
-import { WIKI_DIRS, INDEX_FILES } from "@mindnest/shared";
+import type { CompileResult } from "@nestbrain/shared";
+import { WIKI_DIRS, INDEX_FILES } from "@nestbrain/shared";
 import type { LLMProviderInterface } from "../llm/provider";
 import { PROMPTS } from "../llm/prompts";
 import { loadTracker, saveTracker, hasChanged, markCompiled } from "./tracker";

@@ -1,13 +1,13 @@
 {
-  "name": "@mindnest/desktop",
+  "name": "@nestbrain/desktop",
   "version": "0.10.0",
   "private": true,
-  "description": "MindNest native desktop app",
+  "description": "NestBrain native desktop app",
   "main": "dist/main.js",
   "scripts": {
     "build:ts": "tsc -p tsconfig.json",
     "build": "pnpm build:ts",
-    "dev": "pnpm build:ts && MINDNEST_DEV=1 electron .",
+    "dev": "pnpm build:ts && NESTBRAIN_DEV=1 electron .",
     "start": "electron .",
     "package": "electron-builder",
     "package:mac": "electron-builder --mac",
@@ -25,8 +25,8 @@
     "typescript": "^5.9.3"
   },
   "build": {
-    "appId": "com.nextepochs.mindnest",
-    "productName": "MindNest",
+    "appId": "com.nextepochs.nestbrain",
+    "productName": "NestBrain",
     "copyright": "Copyright © 2026 NextEpochs",
     "npmRebuild": false,
     "afterPack": "build/after-pack.cjs",

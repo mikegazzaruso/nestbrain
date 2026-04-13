@@ -1,5 +1,5 @@
 {
-  "name": "@mindnest/shared",
+  "name": "@nestbrain/shared",
   "version": "0.10.0",
   "private": true,
   "main": "./dist/index.js",

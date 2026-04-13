@@ -25,11 +25,11 @@ import {
 } from "node:fs";
 import * as pty from "node-pty";
 
-const isDev = !!process.env.MINDNEST_DEV;
+const isDev = !!process.env.NESTBRAIN_DEV;
 const DEV_URL = "http://localhost:3000";
 
-// Must be set before app is ready so the menu bar shows "MindNest" not "Electron"
-app.setName("MindNest");
+// Must be set before app is ready so the menu bar shows "NestBrain" not "Electron"
+app.setName("NestBrain");
 
 let mainWindow: BrowserWindow | null = null;
 let nextServer: UtilityProcess | null = null;
@@ -69,10 +69,28 @@ function writeBootstrap(b: Bootstrap): void {
   writeFileSync(p, JSON.stringify(b, null, 2), "utf-8");
 }
 
+// One-time migration from the legacy `.mindnest/` internal state dir to
+// the new `.nestbrain/` (post-rebrand from MindNest → NestBrain). Only
+// renames if the legacy dir exists and the new one doesn't, so it's safe
+// to call repeatedly.
+function migrateLegacyInternalDir(nestBrainPath: string): void {
+  const legacy = join(nestBrainPath, ".mindnest");
+  const current = join(nestBrainPath, ".nestbrain");
+  if (existsSync(legacy) && !existsSync(current)) {
+    try {
+      renameSync(legacy, current);
+      console.log(`[migrate] renamed ${legacy} → ${current}`);
+    } catch (err) {
+      console.warn(`[migrate] failed to rename internal dir:`, err);
+    }
+  }
+}
+
 function getDataDir(): string {
   const bootstrap = readBootstrap();
   if (bootstrap.nestBrainPath && existsSync(bootstrap.nestBrainPath)) {
-    const dir = join(bootstrap.nestBrainPath, ".mindnest");
+    migrateLegacyInternalDir(bootstrap.nestBrainPath);
+    const dir = join(bootstrap.nestBrainPath, ".nestbrain");
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     return dir;
   }
@@ -131,12 +149,12 @@ async function startNextServer(reusePort = false): Promise<string> {
       ...process.env,
       PORT: String(port),
       HOSTNAME: "127.0.0.1",
-      MINDNEST_DATA_DIR: dataDir,
-      ...(wikiDir ? { MINDNEST_WIKI_DIR: wikiDir } : {}),
+      NESTBRAIN_DATA_DIR: dataDir,
+      ...(wikiDir ? { NESTBRAIN_WIKI_DIR: wikiDir } : {}),
       NODE_ENV: "production",
     },
     stdio: "pipe",
-    serviceName: "mindnest-next-server",
+    serviceName: "nestbrain-next-server",
   });
 
   nextServer.stdout?.on("data", (d: Buffer) =>
@@ -267,7 +285,7 @@ function setupMenu(): void {
 }
 
 // === IPC handlers ===
-ipcMain.handle("mindnest:getBootstrap", () => {
+ipcMain.handle("nestbrain:getBootstrap", () => {
   return {
     ...readBootstrap(),
     isElectron: true,
@@ -275,7 +293,7 @@ ipcMain.handle("mindnest:getBootstrap", () => {
   };
 });
 
-ipcMain.handle("mindnest:selectDirectory", async () => {
+ipcMain.handle("nestbrain:selectDirectory", async () => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
     title: "Choose where to create NestBrain",
@@ -335,7 +353,7 @@ function sanitizeEnv(): Record<string, string> {
 }
 
 ipcMain.handle(
-  "mindnest:terminal:create",
+  "nestbrain:terminal:create",
   (_e, { cwd, cols = 80, rows = 24 }: { cwd: string; cols?: number; rows?: number }) => {
     if (!existsSync(cwd)) {
       throw new Error(`cwd does not exist: ${cwd}`);
@@ -361,12 +379,12 @@ ipcMain.handle(
 
     proc.onData((data) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(`mindnest:terminal:data:${id}`, data);
+        mainWindow.webContents.send(`nestbrain:terminal:data:${id}`, data);
       }
     });
     proc.onExit(({ exitCode }) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(`mindnest:terminal:exit:${id}`, exitCode);
+        mainWindow.webContents.send(`nestbrain:terminal:exit:${id}`, exitCode);
       }
       ptySessions.delete(id);
     });
@@ -377,7 +395,7 @@ ipcMain.handle(
 );
 
 ipcMain.on(
-  "mindnest:terminal:write",
+  "nestbrain:terminal:write",
   (_e, { id, data }: { id: string; data: string }) => {
     const sess = ptySessions.get(id);
     if (sess) sess.proc.write(data);
@@ -385,7 +403,7 @@ ipcMain.on(
 );
 
 ipcMain.on(
-  "mindnest:terminal:resize",
+  "nestbrain:terminal:resize",
   (_e, { id, cols, rows }: { id: string; cols: number; rows: number }) => {
     const sess = ptySessions.get(id);
     if (sess) {
@@ -398,7 +416,7 @@ ipcMain.on(
   },
 );
 
-ipcMain.on("mindnest:terminal:kill", (_e, { id }: { id: string }) => {
+ipcMain.on("nestbrain:terminal:kill", (_e, { id }: { id: string }) => {
   const sess = ptySessions.get(id);
   if (sess) {
     try {
@@ -421,12 +439,12 @@ function isHiddenOrIgnored(name: string): boolean {
   return (
     name.startsWith(".") ||
     name === "node_modules" ||
-    name === ".mindnest"
+    name === ".nestbrain"
   );
 }
 
 ipcMain.handle(
-  "mindnest:fs:list",
+  "nestbrain:fs:list",
   (_e, dirPath: string): FsEntry[] => {
     if (!existsSync(dirPath)) return [];
     try {
@@ -449,7 +467,7 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
-  "mindnest:fs:createDir",
+  "nestbrain:fs:createDir",
   (_e, dirPath: string): { ok: true; path: string } => {
     // Containment check — createDir must stay within the active NestBrain
     // (used for New Project and for the in-tree new-folder action).
@@ -498,7 +516,7 @@ function looksBinary(buf: Buffer): boolean {
 }
 
 ipcMain.handle(
-  "mindnest:fs:readFile",
+  "nestbrain:fs:readFile",
   (_e, filePath: string): ReadFileResult => {
     const abs = assertInsideNestBrain(filePath);
     const stat = statSync(abs);
@@ -522,15 +540,15 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
-  "mindnest:fs:writeFile",
+  "nestbrain:fs:writeFile",
   (_e, filePath: string, content: string): { ok: true; size: number } => {
     const abs = assertInsideNestBrain(filePath);
-    // Refuse to write into .mindnest/ — that's internal state the user
+    // Refuse to write into .nestbrain/ — that's internal state the user
     // should never hand-edit through the app's editor.
     const bootstrap = readBootstrap();
-    const internal = resolve(bootstrap.nestBrainPath!, ".mindnest");
+    const internal = resolve(bootstrap.nestBrainPath!, ".nestbrain");
     if (abs === internal || abs.startsWith(internal + "/")) {
-      throw new Error("Cannot write into .mindnest/ — internal state");
+      throw new Error("Cannot write into .nestbrain/ — internal state");
     }
     // Ensure parent directory exists
     const parent = join(abs, "..");
@@ -546,7 +564,7 @@ ipcMain.handle(
 // either workspace-structural (top-level skeleton dirs) or internal state.
 const PROTECTED_TOP_LEVEL_NAMES = new Set([
   ...NESTBRAIN_SUBDIRS,
-  ".mindnest",
+  ".nestbrain",
 ]);
 
 function isProtectedPath(abs: string): boolean {
@@ -554,21 +572,21 @@ function isProtectedPath(abs: string): boolean {
   if (!bootstrap.nestBrainPath) return true;
   const root = resolve(bootstrap.nestBrainPath);
   if (abs === root) return true;
-  const internal = resolve(root, ".mindnest");
+  const internal = resolve(root, ".nestbrain");
   if (abs === internal || abs.startsWith(internal + "/")) return true;
-  // Top-level skeleton subdirs (Business, Context, Daily, ..., .mindnest)
+  // Top-level skeleton subdirs (Business, Context, Daily, ..., .nestbrain)
   const rel = abs.slice(root.length + 1);
   if (!rel.includes("/") && PROTECTED_TOP_LEVEL_NAMES.has(rel)) return true;
   return false;
 }
 
 ipcMain.handle(
-  "mindnest:fs:delete",
+  "nestbrain:fs:delete",
   (_e, targetPath: string): { ok: true } => {
     const abs = assertInsideNestBrain(targetPath);
     if (isProtectedPath(abs)) {
       throw new Error(
-        "This path is protected by MindNest and cannot be deleted.",
+        "This path is protected by NestBrain and cannot be deleted.",
       );
     }
     if (!existsSync(abs)) {
@@ -580,7 +598,7 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
-  "mindnest:fs:rename",
+  "nestbrain:fs:rename",
   (
     _e,
     oldPath: string,
@@ -589,7 +607,7 @@ ipcMain.handle(
     const absOld = assertInsideNestBrain(oldPath);
     if (isProtectedPath(absOld)) {
       throw new Error(
-        "This path is protected by MindNest and cannot be renamed.",
+        "This path is protected by NestBrain and cannot be renamed.",
       );
     }
     const trimmed = (newName ?? "").trim();
@@ -653,10 +671,10 @@ function createFreshNestBrain(nestBrainPath: string): void {
   for (const sub of NESTBRAIN_SUBDIRS) {
     mkdirSync(join(nestBrainPath, sub), { recursive: true });
   }
-  // MindNest-generated wiki lives inside the user-visible Library folder
+  // NestBrain-generated wiki lives inside the user-visible Library folder
   mkdirSync(join(nestBrainPath, "Library", "Knowledge"), { recursive: true });
-  // .mindnest holds internal state (raw sources, settings, vector index)
-  mkdirSync(join(nestBrainPath, ".mindnest"), { recursive: true });
+  // .nestbrain holds internal state (raw sources, settings, vector index)
+  mkdirSync(join(nestBrainPath, ".nestbrain"), { recursive: true });
   // Seed CLAUDE.md and Skills from the bundled skeleton (non-destructive)
   copySkeletonToNestBrain(nestBrainPath);
 }
@@ -689,14 +707,14 @@ function killAllPtySessions(): void {
 
 // ===== NestBrain auto-refresh watcher =====
 // Recursively watches the NestBrain directory and emits a debounced
-// `mindnest:fs:changed` event to the renderer so the file tree refreshes
+// `nestbrain:fs:changed` event to the renderer so the file tree refreshes
 // automatically when files are added/modified/removed from Finder, the
 // terminal, or any other source.
 //
 // Uses fs.watch with { recursive: true } which is supported on macOS and
 // Windows (our target platforms). Debounced at 500ms so bursts of events
 // (e.g. npm install, git operations) collapse into a single refresh.
-// Noise from .mindnest/, .git/, node_modules/, and temp files is filtered
+// Noise from .nestbrain/, .git/, node_modules/, and temp files is filtered
 // in-process so the IPC channel stays quiet.
 let fsWatcher: FSWatcher | null = null;
 let fsWatchDebounce: NodeJS.Timeout | null = null;
@@ -706,7 +724,7 @@ function shouldIgnoreFsChange(filename: string | null): boolean {
   if (!filename) return false;
   const f = filename.replace(/\\/g, "/");
   // Hidden / internal directories
-  if (f === ".mindnest" || f.startsWith(".mindnest/")) return true;
+  if (f === ".nestbrain" || f.startsWith(".nestbrain/")) return true;
   if (f === ".git" || f.startsWith(".git/") || f.includes("/.git/")) return true;
   if (
     f === "node_modules" ||
@@ -742,7 +760,7 @@ function startNestBrainWatcher(nestBrainPath: string): void {
         fsWatchDebounce = setTimeout(() => {
           fsWatchDebounce = null;
           if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send("mindnest:fs:changed");
+            mainWindow.webContents.send("nestbrain:fs:changed");
           }
         }, FS_WATCH_DEBOUNCE_MS);
       },
@@ -771,7 +789,7 @@ function stopNestBrainWatcher(): void {
   }
 }
 
-ipcMain.handle("mindnest:setupNestBrain", async (_e, parentPath: string) => {
+ipcMain.handle("nestbrain:setupNestBrain", async (_e, parentPath: string) => {
   if (!parentPath || typeof parentPath !== "string") {
     throw new Error("Invalid parent path");
   }
@@ -787,7 +805,7 @@ ipcMain.handle("mindnest:setupNestBrain", async (_e, parentPath: string) => {
 });
 
 ipcMain.handle(
-  "mindnest:moveOrCreateNestBrain",
+  "nestbrain:moveOrCreateNestBrain",
   async (_e, parentPath: string) => {
     if (!parentPath || typeof parentPath !== "string") {
       throw new Error("Invalid parent path");
@@ -852,7 +870,7 @@ ipcMain.handle(
 
     // Notify the renderer so it can refresh file tree, terminal state, etc.
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("mindnest:nestBrainMoved", {
+      mainWindow.webContents.send("nestbrain:nestBrainMoved", {
         nestBrainPath: newPath,
       });
     }
@@ -871,19 +889,19 @@ app.whenReady().then(async () => {
     }
   }
 
-  // About panel (shown by the "About MindNest" menu item on macOS)
+  // About panel (shown by the "About NestBrain" menu item on macOS)
   const aboutIconPath = app.isPackaged
     ? join(process.resourcesPath, "icon.png")
     : join(__dirname, "../build/icon.png");
   app.setAboutPanelOptions({
-    applicationName: "MindNest",
+    applicationName: "NestBrain",
     applicationVersion: "0.10.0",
     version: "0.10.0",
     copyright: "Copyright © 2026 NextEpochs. All rights reserved.",
     credits:
       "Created by Mike Gazzaruso (NextEpochs) in 2026.\n\nLLM‑powered personal knowledge base with an integrated workspace.",
     authors: ["Mike Gazzaruso"],
-    website: "https://github.com/mikegazzaruso/MindNest",
+    website: "https://github.com/mikegazzaruso/NestBrain",
     ...(existsSync(aboutIconPath) ? { iconPath: aboutIconPath } : {}),
   });
 

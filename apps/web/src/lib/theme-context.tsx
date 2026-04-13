@@ -15,14 +15,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>("dark");
 
   useEffect(() => {
-    const saved = localStorage.getItem("mindnest-theme") as Theme | null;
+    const saved = localStorage.getItem("nestbrain-theme") as Theme | null;
     if (saved) setTheme(saved);
   }, []);
 
   useEffect(() => {
     document.documentElement.classList.remove("dark", "light");
     document.documentElement.classList.add(theme);
-    localStorage.setItem("mindnest-theme", theme);
+    localStorage.setItem("nestbrain-theme", theme);
   }, [theme]);
 
   function toggle() {

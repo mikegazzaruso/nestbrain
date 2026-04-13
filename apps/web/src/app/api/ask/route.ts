@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ask } from "@mindnest/core";
+import { ask } from "@nestbrain/core";
 import { getDataPaths } from "@/lib/config";
 import { getLLM } from "@/lib/llm";
 

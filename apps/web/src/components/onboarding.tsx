@@ -142,12 +142,12 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
 
   async function handlePickDirectory() {
     setDirError(null);
-    if (!window.mindnest) {
+    if (!window.nestbrain) {
       setDirError("Native directory picker not available.");
       return;
     }
     try {
-      const picked = await window.mindnest.selectDirectory();
+      const picked = await window.nestbrain.selectDirectory();
       if (picked) setParentPath(picked);
     } catch (err) {
       setDirError(err instanceof Error ? err.message : "Failed to open picker");
@@ -155,11 +155,11 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
   }
 
   async function handleCreateNestBrain() {
-    if (!parentPath || !window.mindnest) return;
+    if (!parentPath || !window.nestbrain) return;
     setCreatingDir(true);
     setDirError(null);
     try {
-      const result = await window.mindnest.setupNestBrain(parentPath);
+      const result = await window.nestbrain.setupNestBrain(parentPath);
       setNestBrainPath(result.nestBrainPath);
       // Give the restarted Next server a moment before moving on
       await new Promise((r) => setTimeout(r, 600));
@@ -257,7 +257,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
             </div>
             <div className="space-y-3">
               <h1 className="text-5xl font-bold tracking-tight">
-                Welcome to <span className="text-accent">MindNest</span>
+                Welcome to <span className="text-accent">NestBrain</span>
               </h1>
               <p className="text-lg text-muted/80 max-w-lg mx-auto leading-relaxed">
                 Your personal, LLM‑powered knowledge base. Let&apos;s get you set
@@ -281,7 +281,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
                 A second brain that organizes itself
               </h2>
               <p className="text-muted/80 max-w-lg mx-auto">
-                MindNest ingests articles, papers, repos, videos, and PDFs — then
+                NestBrain ingests articles, papers, repos, videos, and PDFs — then
                 an LLM compiles them into an interconnected wiki you can browse,
                 search, and question.
               </p>
@@ -307,7 +307,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
             <div className="p-5 rounded-2xl bg-gradient-to-br from-accent/5 to-purple-500/5 border border-accent/20">
               <p className="text-sm text-muted/80 leading-relaxed">
                 <span className="text-foreground font-medium">NestBrain</span> is
-                MindNest&apos;s home on your disk — a self‑contained workspace
+                NestBrain&apos;s home on your disk — a self‑contained workspace
                 with folders for Business, Projects, Skills, Library, and more.
                 Think of it as an operating system for your thoughts.
               </p>
@@ -423,7 +423,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
                 Pick your LLM provider
               </h2>
               <p className="text-muted/80 max-w-md mx-auto text-sm">
-                MindNest needs an LLM to compile and query your knowledge base.
+                NestBrain needs an LLM to compile and query your knowledge base.
               </p>
             </div>
 
@@ -612,7 +612,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
               </h1>
               <p className="text-lg text-muted/80 max-w-md mx-auto leading-relaxed">
                 Your NestBrain is ready. Have a splendid experience building
-                your second brain with MindNest.
+                your second brain with NestBrain.
               </p>
             </div>
           </div>

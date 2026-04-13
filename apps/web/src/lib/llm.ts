@@ -1,5 +1,5 @@
-import { createProvider } from "@mindnest/core";
-import type { LLMProviderInterface } from "@mindnest/core";
+import { createProvider } from "@nestbrain/core";
+import type { LLMProviderInterface } from "@nestbrain/core";
 import { loadSettings } from "./settings";
 import { ensureNativeLoadersRegistered } from "./native-loader";
 

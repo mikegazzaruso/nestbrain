@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { writeFile, mkdir, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { ingest } from "@mindnest/core";
-import type { SourceType } from "@mindnest/shared";
+import { ingest } from "@nestbrain/core";
+import type { SourceType } from "@nestbrain/shared";
 import { getDataPaths } from "@/lib/config";
 import { ensureNativeLoadersRegistered } from "@/lib/native-loader";
 

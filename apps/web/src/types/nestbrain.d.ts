@@ -13,7 +13,7 @@ interface CreateTerminalResult {
 
 declare global {
   interface Window {
-    mindnest?: {
+    nestbrain?: {
       isElectron: true;
       platform: NodeJS.Platform;
       getBootstrap: () => Promise<{

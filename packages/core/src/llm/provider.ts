@@ -1,4 +1,4 @@
-import type { LLMProvider } from "@mindnest/shared";
+import type { LLMProvider } from "@nestbrain/shared";
 
 export interface LLMResponse {
   text: string;

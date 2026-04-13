@@ -1,9 +1,9 @@
 {
-  "name": "@mindnest/cli",
+  "name": "@nestbrain/cli",
   "version": "0.10.0",
   "private": true,
   "bin": {
-    "mindnest": "./dist/index.js"
+    "nestbrain": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc",
@@ -12,8 +12,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@mindnest/core": "workspace:*",
-    "@mindnest/shared": "workspace:*",
+    "@nestbrain/core": "workspace:*",
+    "@nestbrain/shared": "workspace:*",
     "commander": "^13.1.0"
   }
 }

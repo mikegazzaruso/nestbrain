@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { search } from "@mindnest/core";
+import { search } from "@nestbrain/core";
 import { getDataPaths } from "@/lib/config";
 import { ensureNativeLoadersRegistered } from "@/lib/native-loader";
 

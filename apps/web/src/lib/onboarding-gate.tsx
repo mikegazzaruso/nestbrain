@@ -14,13 +14,13 @@ export function OnboardingGate({ children }: { children: React.ReactNode }) {
 
   async function checkOnboarding() {
     // Only Electron triggers the onboarding flow
-    if (typeof window === "undefined" || !window.mindnest) {
+    if (typeof window === "undefined" || !window.nestbrain) {
       setState("done");
       return;
     }
     try {
       const [bootstrap, settingsRes] = await Promise.all([
-        window.mindnest.getBootstrap(),
+        window.nestbrain.getBootstrap(),
         fetch("/api/settings").then((r) => r.json()),
       ]);
       const hasNestBrain = !!bootstrap?.nestBrainPath;

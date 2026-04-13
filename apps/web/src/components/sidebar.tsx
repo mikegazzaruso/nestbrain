@@ -33,7 +33,7 @@ const navItems = [
 const MIN_WIDTH = 200;
 const MAX_WIDTH = 400;
 const DEFAULT_WIDTH = 256;
-const STORAGE_KEY = "mindnest-sidebar-width";
+const STORAGE_KEY = "nestbrain-sidebar-width";
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -51,8 +51,8 @@ export function Sidebar() {
 
   // Load NestBrain path (Electron only)
   useEffect(() => {
-    if (typeof window === "undefined" || !window.mindnest) return;
-    window.mindnest
+    if (typeof window === "undefined" || !window.nestbrain) return;
+    window.nestbrain
       .getBootstrap()
       .then((b) => {
         if (b.nestBrainPath) setNestBrainPath(b.nestBrainPath);
@@ -62,11 +62,11 @@ export function Sidebar() {
 
   const handleCreateProject = useCallback(
     async (projectName: string) => {
-      if (!nestBrainPath || typeof window === "undefined" || !window.mindnest) {
+      if (!nestBrainPath || typeof window === "undefined" || !window.nestbrain) {
         throw new Error("NestBrain path not available");
       }
       const projectPath = `${nestBrainPath}/Projects/${projectName}`;
-      await window.mindnest.fs.createDir(projectPath);
+      await window.nestbrain.fs.createDir(projectPath);
       await openTerminal(projectPath, projectName);
       // Trigger file tree refresh via focus event
       window.dispatchEvent(new Event("focus"));
@@ -157,7 +157,7 @@ export function Sidebar() {
 
         {/* Footer */}
         <div className="px-4 py-3 border-t border-sidebar-border flex items-center justify-between">
-          <p className="text-[10px] text-muted/30">MindNest</p>
+          <p className="text-[10px] text-muted/30">NestBrain</p>
           <ThemeToggle />
         </div>
       </aside>

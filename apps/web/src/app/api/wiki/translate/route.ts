@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getLLM } from "@/lib/llm";
-import { PROMPTS } from "@mindnest/core";
+import { PROMPTS } from "@nestbrain/core";
 
 export const maxDuration = 300;
 

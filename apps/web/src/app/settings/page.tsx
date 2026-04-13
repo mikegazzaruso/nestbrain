@@ -342,11 +342,11 @@ function NestBrainLocation() {
   const [confirmParent, setConfirmParent] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !window.mindnest) return;
-    window.mindnest.getBootstrap().then((b) => {
+    if (typeof window === "undefined" || !window.nestbrain) return;
+    window.nestbrain.getBootstrap().then((b) => {
       setCurrentPath(b?.nestBrainPath ?? null);
     });
-    const off = window.mindnest.onNestBrainMoved?.((info) => {
+    const off = window.nestbrain.onNestBrainMoved?.((info) => {
       setCurrentPath(info.nestBrainPath);
     });
     return () => {
@@ -355,23 +355,23 @@ function NestBrainLocation() {
   }, []);
 
   // Only render in Electron — moving the workspace is a native-only feature
-  if (typeof window !== "undefined" && !window.mindnest) return null;
+  if (typeof window !== "undefined" && !window.nestbrain) return null;
 
   async function handlePickLocation() {
     setError(null);
     setNotice(null);
-    if (!window.mindnest) return;
-    const parent = await window.mindnest.selectDirectory();
+    if (!window.nestbrain) return;
+    const parent = await window.nestbrain.selectDirectory();
     if (!parent) return;
     setConfirmParent(parent);
   }
 
   async function handleConfirm() {
-    if (!confirmParent || !window.mindnest) return;
+    if (!confirmParent || !window.nestbrain) return;
     setBusy(true);
     setError(null);
     try {
-      const result = await window.mindnest.moveOrCreateNestBrain(confirmParent);
+      const result = await window.nestbrain.moveOrCreateNestBrain(confirmParent);
       setCurrentPath(result.nestBrainPath);
       setNotice(
         result.moved

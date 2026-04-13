@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { lint } from "@mindnest/core";
+import { lint } from "@nestbrain/core";
 import { getDataPaths } from "@/lib/config";
 import { getLLM } from "@/lib/llm";
 

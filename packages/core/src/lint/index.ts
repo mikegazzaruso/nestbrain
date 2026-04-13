@@ -1,7 +1,7 @@
 import { readFile, writeFile, readdir, mkdir } from "node:fs/promises";
 import { join, resolve, basename } from "node:path";
-import type { LintFinding } from "@mindnest/shared";
-import { WIKI_DIRS } from "@mindnest/shared";
+import type { LintFinding } from "@nestbrain/shared";
+import { WIKI_DIRS } from "@nestbrain/shared";
 import type { LLMProviderInterface } from "../llm/provider";
 import { nowISO, buildFrontmatter } from "../ingest/utils";
 

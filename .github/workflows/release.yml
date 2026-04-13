@@ -73,7 +73,7 @@ jobs:
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mindnest-macos-arm64
+          name: nestbrain-macos-arm64
           path: apps/desktop/release/*.dmg
           if-no-files-found: error
           retention-days: 7
@@ -112,7 +112,7 @@ jobs:
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mindnest-windows-x64
+          name: nestbrain-windows-x64
           path: apps/desktop/release/*.exe
           if-no-files-found: error
           retention-days: 7
@@ -139,21 +139,21 @@ jobs:
         run: ls -lh dist/
 
       # Publish the signed binaries to the PRIVATE distribution repo
-      # `mikegazzaruso/mindnest-releases`. Buyers gain repo access via Polar,
+      # `mikegazzaruso/nestbrain-releases`. Buyers gain repo access via Polar,
       # giving them read access to releases. The source remains public on
-      # `mikegazzaruso/mindnest`; only the official notarized builds are
+      # `mikegazzaruso/nestbrain`; only the official notarized builds are
       # behind the paywall here.
       - name: Create / update Release on private repo
         uses: softprops/action-gh-release@v2
         with:
-          repository: mikegazzaruso/mindnest-releases
+          repository: mikegazzaruso/nestbrain-releases
           token: ${{ secrets.RELEASES_TOKEN }}
           tag_name: v${{ steps.version.outputs.version }}
-          name: MindNest v${{ steps.version.outputs.version }}
+          name: NestBrain v${{ steps.version.outputs.version }}
           body: |
-            Official signed and notarized MindNest builds for paying supporters.
+            Official signed and notarized NestBrain builds for paying supporters.
             Source code and self-build instructions remain free at
-            https://github.com/mikegazzaruso/mindnest
+            https://github.com/mikegazzaruso/nestbrain
           fail_on_unmatched_files: true
           files: |
             dist/*.dmg

@@ -2,8 +2,8 @@
 
 import { Command } from "commander";
 import { resolve } from "node:path";
-import { ingest, ingestBulk, compile, ask, search, lint, createProvider } from "@mindnest/core";
-import type { LLMProviderInterface } from "@mindnest/core";
+import { ingest, ingestBulk, compile, ask, search, lint, createProvider } from "@nestbrain/core";
+import type { LLMProviderInterface } from "@nestbrain/core";
 import { execSync } from "node:child_process";
 
 const program = new Command();
@@ -14,14 +14,14 @@ const DATA_WIKI = resolve(process.cwd(), "data/wiki");
 function getLLM(): LLMProviderInterface {
   return createProvider({
     provider: "claude-cli",
-    model: process.env.MINDNEST_MODEL ?? "sonnet",
+    model: process.env.NESTBRAIN_MODEL ?? "sonnet",
     maxTurns: 5,
     apiKey: process.env.OPENAI_API_KEY,
   });
 }
 
 program
-  .name("mindnest")
+  .name("nestbrain")
   .description("LLM-powered personal knowledge base")
   .version("0.2.0");
 
@@ -139,10 +139,10 @@ program
 
 program
   .command("serve")
-  .description("Start the MindNest web UI")
+  .description("Start the NestBrain web UI")
   .option("-p, --port <port>", "Port number", "3000")
   .action((options) => {
-    console.log(`Starting MindNest on port ${options.port}...`);
+    console.log(`Starting NestBrain on port ${options.port}...`);
     try {
       execSync(`npx next dev -p ${options.port}`, {
         cwd: resolve(__dirname, "../../apps/web"),

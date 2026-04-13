@@ -1,5 +1,5 @@
 {
-  "name": "@mindnest/db",
+  "name": "@nestbrain/db",
   "version": "0.10.0",
   "private": true,
   "main": "./dist/index.js",
@@ -11,7 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@mindnest/shared": "workspace:*",
+    "@nestbrain/shared": "workspace:*",
     "chromadb": "^1.9.2",
     "chromadb-default-embed": "^2.13.2"
   }

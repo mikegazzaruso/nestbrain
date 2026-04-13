@@ -99,13 +99,13 @@ export function EditorView() {
       setState({ kind: "error", message: "No file path provided" });
       return;
     }
-    if (typeof window === "undefined" || !window.mindnest?.fs?.readFile) {
+    if (typeof window === "undefined" || !window.nestbrain?.fs?.readFile) {
       setState({ kind: "error", message: "Editor requires the desktop app" });
       return;
     }
     let cancelled = false;
     setState({ kind: "loading" });
-    window.mindnest.fs
+    window.nestbrain.fs
       .readFile(filePath)
       .then((res) => {
         if (cancelled) return;
@@ -133,12 +133,12 @@ export function EditorView() {
 
   const handleSave = useCallback(async () => {
     if (state.kind !== "ready") return;
-    if (!window.mindnest?.fs?.writeFile) return;
+    if (!window.nestbrain?.fs?.writeFile) return;
     if (content === originalContent) return;
     setSaving(true);
     setError(null);
     try {
-      await window.mindnest.fs.writeFile(filePath, content);
+      await window.nestbrain.fs.writeFile(filePath, content);
       setOriginalContent(content);
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 1500);

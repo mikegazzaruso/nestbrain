@@ -14,7 +14,7 @@ import { createRequire } from "node:module";
 import {
   registerTransformersLoader,
   registerPdfParseLoader,
-} from "@mindnest/core";
+} from "@nestbrain/core";
 
 const nodeRequire = createRequire(import.meta.url);
 
