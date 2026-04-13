@@ -42,11 +42,16 @@ jobs:
 
       - name: Build & package macOS DMG
         env:
-          # No signing certificate available on the runner — disable
-          # automatic identity discovery so electron-builder produces an
-          # unsigned .app inside the DMG instead of failing.
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: pnpm desktop:package:mac
+          # Developer ID Application certificate, base64-encoded .p12.
+          # Exported from Keychain Access on a Mac that has the cert.
+          CSC_LINK: ${{ secrets.MAC_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+        run: |
+          if [ -z "$CSC_LINK" ]; then
+            echo "No MAC_CERTIFICATE secret found — building unsigned"
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+          fi
+          pnpm desktop:package:mac
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
