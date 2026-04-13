@@ -230,8 +230,8 @@ jobs:
                       break
               print(f"  S3 OK, ETag={etag}")
 
-              # 3. Confirm upload (pass checksum so Polar can verify integrity)
-              r2 = requests.patch(f"{base}/v1/files/{file_id}/uploaded", headers=headers,
+              # 3. Confirm upload
+              r2 = requests.post(f"{base}/v1/files/{file_id}/uploaded", headers=headers,
                   json={"parts": [{"number": 1, "checksum_etag": etag,
                                    "checksum_sha256_base64": checksum_b64}]}, timeout=30)
               if not r2.ok:
