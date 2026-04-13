@@ -117,6 +117,97 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  upload-polar:
+    name: Upload to Polar File Downloads
+    needs: [build-mac, build-win]
+    runs-on: ubuntu-latest
+    env:
+      POLAR_TOKEN: ${{ secrets.POLAR_ACCESS_TOKEN }}
+      POLAR_PRODUCT_ID: b10d71de-c0fe-4544-9855-89093a15524f
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -lh dist/
+
+      - name: Upload files to Polar
+        run: |
+          python3 << 'PYEOF'
+          import os, sys, requests, json, hashlib
+
+          token      = os.environ["POLAR_TOKEN"]
+          product_id = os.environ["POLAR_PRODUCT_ID"]
+          headers    = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+          base       = "https://api.polar.sh"
+
+          MIME = {
+              ".dmg": "application/x-apple-diskimage",
+              ".exe": "application/vnd.microsoft.portable-executable",
+          }
+
+          dist = "./dist"
+          files = [f for f in os.listdir(dist) if any(f.endswith(e) for e in MIME)]
+          if not files:
+              print("No artifacts found — nothing to upload")
+              sys.exit(0)
+
+          for filename in files:
+              path = os.path.join(dist, filename)
+              ext  = os.path.splitext(filename)[1]
+              mime = MIME.get(ext, "application/octet-stream")
+              size = os.path.getsize(path)
+              print(f"\n→ {filename}  ({size/1024/1024:.1f} MB)")
+
+              # 1. Initiate upload
+              r = requests.post(f"{base}/v1/files", headers=headers, json={
+                  "name": filename,
+                  "mime_type": mime,
+                  "size": size,
+                  "service": "downloadable",
+                  "upload": {
+                      "parts": [{"number": 1, "chunk_start": 0, "chunk_end": size - 1}]
+                  }
+              })
+              if not r.ok:
+                  print("  initiate upload failed:", r.status_code, r.text); sys.exit(1)
+              data    = r.json()
+              file_id = data["id"]
+              s3_url  = data["upload"]["parts"][0]["url"]
+              print(f"  file_id={file_id}")
+
+              # 2. PUT to presigned S3 URL
+              with open(path, "rb") as f:
+                  s3 = requests.put(s3_url, data=f, headers={"Content-Type": mime})
+              if not s3.ok:
+                  print("  S3 upload failed:", s3.status_code); sys.exit(1)
+              etag = s3.headers.get("ETag", "").strip('"')
+              print(f"  S3 OK, ETag={etag}")
+
+              # 3. Confirm upload
+              r2 = requests.patch(f"{base}/v1/files/{file_id}/uploaded", headers=headers,
+                  json={"parts": [{"number": 1, "checksum_etag": etag}]})
+              if not r2.ok:
+                  print("  confirm failed:", r2.status_code, r2.text); sys.exit(1)
+              print("  confirmed")
+
+              # 4. Attach to product
+              r3 = requests.post(f"{base}/v1/products/{product_id}/files/{file_id}", headers=headers)
+              if not r3.ok:
+                  # 409 = already attached — not an error
+                  if r3.status_code == 409:
+                      print("  already attached (409 — OK)")
+                  else:
+                      print("  attach failed:", r3.status_code, r3.text); sys.exit(1)
+              else:
+                  print("  attached to product")
+
+          print("\nAll files uploaded successfully.")
+          PYEOF
+
   release:
     name: Publish to private releases repo
     needs: [build-mac, build-win]
