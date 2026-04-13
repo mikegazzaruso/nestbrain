@@ -61,8 +61,11 @@
           "arch": ["arm64"]
         }
       ],
-      "hardenedRuntime": false,
-      "gatekeeperAssess": false
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "notarize": {
+        "teamId": "RB39HEKKN6"
+      }
     },
     "win": {
       "icon": "build/icon.ico",

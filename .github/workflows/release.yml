@@ -40,15 +40,32 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Prune non-arm64 node-pty prebuilds
+        # node-pty ships prebuilds for all platforms inside one npm package.
+        # With hardenedRuntime, codesign signs every mach-O individually and
+        # chokes on Windows PE files, retrying for minutes. Strip everything
+        # except the darwin-arm64 prebuild we actually need.
+        run: |
+          cd apps/desktop/node_modules/node-pty/prebuilds
+          ls -1 | grep -v '^darwin-arm64$' | xargs -I {} rm -rf {}
+          ls -1
+
       - name: Build & package macOS DMG
         env:
           # Developer ID Application certificate, base64-encoded .p12.
           # Exported from Keychain Access on a Mac that has the cert.
           CSC_LINK: ${{ secrets.MAC_CERTIFICATE }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+          # Notarization credentials. If set, electron-builder uploads the
+          # signed .app to Apple's notary service and staples the ticket
+          # before bundling the DMG. Notarization needs hardenedRuntime: true
+          # which is already configured in apps/desktop/package.json.
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: RB39HEKKN6
         run: |
           if [ -z "$CSC_LINK" ]; then
-            echo "No MAC_CERTIFICATE secret found — building unsigned"
+            echo "No MAC_CERTIFICATE secret — building unsigned"
             export CSC_IDENTITY_AUTO_DISCOVERY=false
           fi
           pnpm desktop:package:mac
