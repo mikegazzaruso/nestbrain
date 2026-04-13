@@ -186,24 +186,27 @@ jobs:
               s3_headers = part.get("headers", {})
               print(f"  file_id={file_id}, extra headers: {list(s3_headers.keys())}")
 
-              # 2. PUT to presigned S3 URL via curl (handles large files + SSL reliably)
-              header_args = []
-              for k, v in s3_headers.items():
-                  header_args += ["--header", f"{k}: {v}"]
-
+              # 2. PUT to presigned S3 URL via curl
+              # --http1.1  : S3 presigned URLs require HTTP/1.1 (HTTP/2 → 400)
+              # --fail-with-body: exit non-zero AND show S3 error XML on failure
+              # --upload-file: streams the file without loading into memory
               result = subprocess.run([
-                  "curl", "--fail", "--silent", "--show-error",
-                  "--request", "PUT",
-                  "--header", "Expect:",      # suppress 100-continue, S3 dislikes it
+                  "curl", "--http1.1",
+                  "--fail-with-body", "--silent", "--show-error",
                   "--upload-file", path,
+                  "--header", "Expect:",
                   "--dump-header", "-",
                   "--max-time", "600",
                   "--retry", "3",
-                  "--retry-delay", "5",
-              ] + header_args + [s3_url], capture_output=True, text=True)
+                  "--retry-delay", "10",
+                  s3_url,
+              ], capture_output=True, text=True)
 
               if result.returncode != 0:
-                  print("  S3 upload failed:", result.stderr); sys.exit(1)
+                  print("  S3 upload failed")
+                  print("  stderr:", result.stderr[:300])
+                  print("  stdout:", result.stdout[:500])
+                  sys.exit(1)
 
               # Extract ETag from curl response headers
               etag = ""
