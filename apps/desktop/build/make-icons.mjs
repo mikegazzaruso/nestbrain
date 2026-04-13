@@ -15,15 +15,19 @@ if (!existsSync(src)) {
   process.exit(1);
 }
 
-// Trim any flat-color (white) border around the real icon, then normalize
-// back to a square canvas so all generated sizes are uniform.
-async function trimmedBuffer() {
-  const trimmed = await sharp(src)
-    .trim({ threshold: 20 }) // trim pixels within 20 of the border color
-    .toBuffer({ resolveWithObject: true });
-  const { data, info } = trimmed;
-  // Pad/square the trimmed image so it's centered on a square canvas
-  const size = Math.max(info.width, info.height);
+// Pad/square the source image on a transparent canvas so all generated
+// sizes are uniform. No trim: the current icon is already camera-ready
+// with a dark background — trimming would eat into the dark space
+// surrounding the brain.
+async function squaredBuffer() {
+  const meta = await sharp(src).metadata();
+  const w = meta.width ?? 0;
+  const h = meta.height ?? 0;
+  if (w === h) {
+    return sharp(src).png().toBuffer();
+  }
+  const size = Math.max(w, h);
+  const input = await sharp(src).png().toBuffer();
   return sharp({
     create: {
       width: size,
@@ -34,17 +38,17 @@ async function trimmedBuffer() {
   })
     .composite([
       {
-        input: data,
-        left: Math.floor((size - info.width) / 2),
-        top: Math.floor((size - info.height) / 2),
+        input,
+        left: Math.floor((size - w) / 2),
+        top: Math.floor((size - h) / 2),
       },
     ])
     .png()
     .toBuffer();
 }
 
-const trimmedSrc = await trimmedBuffer();
-console.log(`Trimmed source (white border removed)`);
+const trimmedSrc = await squaredBuffer();
+console.log(`Source normalized to square canvas`);
 
 const outDir = resolve(__dirname);
 const iconsetDir = join(outDir, "icon.iconset");
@@ -74,13 +78,43 @@ function makeRoundedMaskSvg(size) {
   </svg>`;
 }
 
-async function generate(size, filename) {
-  const mask = Buffer.from(makeRoundedMaskSvg(size));
-  const buf = await sharp(trimmedSrc)
-    .resize(size, size, { fit: "cover" })
+// Apple HIG: the artwork's squircle bounding box is ~824/1024 ≈ 0.805 of
+// the full canvas, with ~10% transparent safe-area on each side. Without
+// this inset, the app icon appears visibly larger than other macOS icons
+// in the dock and app switcher.
+const INSET_FACTOR = 0.8;
+
+async function renderInsetIcon(size) {
+  const inner = Math.round(size * INSET_FACTOR);
+  const mask = Buffer.from(makeRoundedMaskSvg(inner));
+  // Masked content at the inset size
+  const content = await sharp(trimmedSrc)
+    .resize(inner, inner, { fit: "cover" })
     .composite([{ input: mask, blend: "dest-in" }])
     .png()
     .toBuffer();
+  // Center on the full-size transparent canvas
+  return sharp({
+    create: {
+      width: size,
+      height: size,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    },
+  })
+    .composite([
+      {
+        input: content,
+        left: Math.floor((size - inner) / 2),
+        top: Math.floor((size - inner) / 2),
+      },
+    ])
+    .png()
+    .toBuffer();
+}
+
+async function generate(size, filename) {
+  const buf = await renderInsetIcon(size);
   writeFileSync(join(iconsetDir, filename), buf);
   console.log(`✓ ${filename} (${size}x${size})`);
 }
@@ -99,12 +133,8 @@ console.log(`✓ ${icnsPath}`);
 
 // Produce a 512x512 PNG for Linux/fallback
 const pngPath = join(outDir, "icon.png");
-const maskBig = Buffer.from(makeRoundedMaskSvg(512));
-await sharp(trimmedSrc)
-  .resize(512, 512, { fit: "cover" })
-  .composite([{ input: maskBig, blend: "dest-in" }])
-  .png()
-  .toFile(pngPath);
+const pngBuf = await renderInsetIcon(512);
+writeFileSync(pngPath, pngBuf);
 console.log(`✓ ${pngPath}`);
 
 // Produce .ico (multi-size) for Windows using the PNG buffers we already generated
@@ -112,12 +142,7 @@ console.log(`✓ ${pngPath}`);
 const icoSizes = [16, 24, 32, 48, 64, 128, 256];
 const icoImages = [];
 for (const s of icoSizes) {
-  const mask = Buffer.from(makeRoundedMaskSvg(s));
-  const png = await sharp(trimmedSrc)
-    .resize(s, s, { fit: "cover" })
-    .composite([{ input: mask, blend: "dest-in" }])
-    .png()
-    .toBuffer();
+  const png = await renderInsetIcon(s);
   icoImages.push({ size: s, png });
 }
 

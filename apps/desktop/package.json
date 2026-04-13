@@ -1,6 +1,6 @@
 {
   "name": "@mindnest/desktop",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "private": true,
   "description": "MindNest native desktop app",
   "main": "dist/main.js",
@@ -28,6 +28,8 @@
     "appId": "com.nextepochs.mindnest",
     "productName": "MindNest",
     "copyright": "Copyright © 2026 NextEpochs",
+    "npmRebuild": false,
+    "afterPack": "build/after-pack.cjs",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -52,6 +54,10 @@
       {
         "from": "../../apps/web/public",
         "to": "web/apps/web/public"
+      },
+      {
+        "from": "../../skeleton",
+        "to": "skeleton"
       }
     ],
     "mac": {
@@ -60,10 +66,10 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["arm64", "x64"]
+          "arch": ["arm64"]
         }
       ],
-      "hardenedRuntime": true,
+      "hardenedRuntime": false,
       "gatekeeperAssess": false
     },
     "win": {

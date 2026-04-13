@@ -8,6 +8,8 @@ import {
   Eye,
   EyeOff,
   AlertCircle,
+  FolderOpen,
+  ArrowRight,
 } from "lucide-react";
 
 interface OpenAIModel {
@@ -322,10 +324,156 @@ export default function SettingsPage() {
           )}
         </div>
 
+        {/* NestBrain Location */}
+        <NestBrainLocation />
+
         {/* Danger Zone */}
         <DangerZone />
       </div>
     </div>
+  );
+}
+
+function NestBrainLocation() {
+  const [currentPath, setCurrentPath] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [confirmParent, setConfirmParent] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.mindnest) return;
+    window.mindnest.getBootstrap().then((b) => {
+      setCurrentPath(b?.nestBrainPath ?? null);
+    });
+    const off = window.mindnest.onNestBrainMoved?.((info) => {
+      setCurrentPath(info.nestBrainPath);
+    });
+    return () => {
+      if (off) off();
+    };
+  }, []);
+
+  // Only render in Electron — moving the workspace is a native-only feature
+  if (typeof window !== "undefined" && !window.mindnest) return null;
+
+  async function handlePickLocation() {
+    setError(null);
+    setNotice(null);
+    if (!window.mindnest) return;
+    const parent = await window.mindnest.selectDirectory();
+    if (!parent) return;
+    setConfirmParent(parent);
+  }
+
+  async function handleConfirm() {
+    if (!confirmParent || !window.mindnest) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await window.mindnest.moveOrCreateNestBrain(confirmParent);
+      setCurrentPath(result.nestBrainPath);
+      setNotice(
+        result.moved
+          ? "NestBrain moved successfully."
+          : result.created
+            ? "New NestBrain created at the chosen location."
+            : "NestBrain location unchanged.",
+      );
+      setConfirmParent(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to move NestBrain.");
+    }
+    setBusy(false);
+  }
+
+  return (
+    <section className="mt-12 pt-8 border-t border-border">
+      <h2 className="text-sm font-medium text-muted/70 uppercase tracking-wider mb-4">
+        NestBrain Location
+      </h2>
+
+      <div className="p-5 rounded-xl bg-card border border-border">
+        <div className="flex items-start gap-3 mb-4">
+          <FolderOpen size={16} className="text-muted/60 mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] text-muted/60 uppercase tracking-wider mb-1">
+              Current path
+            </p>
+            <p className="text-sm font-mono text-foreground truncate" title={currentPath ?? ""}>
+              {currentPath ?? "Not set"}
+            </p>
+          </div>
+        </div>
+
+        <p className="text-[11px] text-muted/60 leading-relaxed mb-4">
+          Move your NestBrain workspace to a different location on disk. If a
+          NestBrain already exists, it will be moved (preserving all your data);
+          otherwise a fresh one will be created at the chosen location. Any
+          open terminal sessions will be closed.
+        </p>
+
+        <button
+          onClick={handlePickLocation}
+          disabled={busy}
+          className="px-4 py-2 bg-background border border-border rounded-lg text-xs text-foreground hover:border-accent/40 hover:bg-accent/5 transition-colors disabled:opacity-50 flex items-center gap-2"
+        >
+          <FolderOpen size={13} />
+          Change location…
+        </button>
+
+        {notice && (
+          <p className="mt-3 text-xs text-green-400/80 flex items-center gap-1.5">
+            <Check size={12} />
+            {notice}
+          </p>
+        )}
+        {error && (
+          <p className="mt-3 text-xs text-red-400/80 flex items-start gap-1.5">
+            <AlertCircle size={12} className="mt-0.5 shrink-0" />
+            <span>{error}</span>
+          </p>
+        )}
+
+        {confirmParent && (
+          <div className="mt-4 p-4 rounded-lg bg-accent/5 border border-accent/20">
+            <p className="text-xs text-foreground/90 mb-3 leading-relaxed">
+              {currentPath ? "Move NestBrain to this location?" : "Create NestBrain at this location?"}
+            </p>
+            <div className="flex items-center gap-2 text-[11px] font-mono text-muted/70 mb-4 overflow-hidden">
+              {currentPath && (
+                <>
+                  <span className="truncate" title={currentPath}>
+                    {currentPath}
+                  </span>
+                  <ArrowRight size={12} className="shrink-0 text-muted/40" />
+                </>
+              )}
+              <span className="truncate text-foreground/80" title={`${confirmParent}/NestBrain`}>
+                {confirmParent}/NestBrain
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleConfirm}
+                disabled={busy}
+                className="px-4 py-2 bg-accent text-background text-xs font-medium rounded-lg hover:bg-accent-hover transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {busy && <Loader2 size={12} className="animate-spin" />}
+                {busy ? "Working…" : "Confirm"}
+              </button>
+              <button
+                onClick={() => setConfirmParent(null)}
+                disabled={busy}
+                className="px-4 py-2 bg-background border border-border rounded-lg text-xs text-muted hover:text-foreground transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 

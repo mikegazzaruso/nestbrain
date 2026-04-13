@@ -27,6 +27,14 @@ contextBridge.exposeInMainWorld("mindnest", {
   selectDirectory: () => ipcRenderer.invoke("mindnest:selectDirectory"),
   setupNestBrain: (parentPath: string) =>
     ipcRenderer.invoke("mindnest:setupNestBrain", parentPath),
+  moveOrCreateNestBrain: (parentPath: string) =>
+    ipcRenderer.invoke("mindnest:moveOrCreateNestBrain", parentPath),
+  onNestBrainMoved: (callback: (info: { nestBrainPath: string }) => void) => {
+    const handler = (_e: unknown, info: { nestBrainPath: string }) =>
+      callback(info);
+    ipcRenderer.on("mindnest:nestBrainMoved", handler);
+    return () => ipcRenderer.off("mindnest:nestBrainMoved", handler);
+  },
 
   // File system
   fs: {
@@ -34,6 +42,29 @@ contextBridge.exposeInMainWorld("mindnest", {
       ipcRenderer.invoke("mindnest:fs:list", dirPath),
     createDir: (dirPath: string): Promise<{ ok: true; path: string }> =>
       ipcRenderer.invoke("mindnest:fs:createDir", dirPath),
+    readFile: (filePath: string): Promise<{
+      content: string;
+      size: number;
+      binary: boolean;
+      tooLarge: boolean;
+    }> => ipcRenderer.invoke("mindnest:fs:readFile", filePath),
+    writeFile: (
+      filePath: string,
+      content: string,
+    ): Promise<{ ok: true; size: number }> =>
+      ipcRenderer.invoke("mindnest:fs:writeFile", filePath, content),
+    delete: (targetPath: string): Promise<{ ok: true }> =>
+      ipcRenderer.invoke("mindnest:fs:delete", targetPath),
+    rename: (
+      oldPath: string,
+      newName: string,
+    ): Promise<{ ok: true; newPath: string }> =>
+      ipcRenderer.invoke("mindnest:fs:rename", oldPath, newName),
+    onChange: (callback: () => void) => {
+      const handler = () => callback();
+      ipcRenderer.on("mindnest:fs:changed", handler);
+      return () => ipcRenderer.off("mindnest:fs:changed", handler);
+    },
   },
 
   // Terminal
