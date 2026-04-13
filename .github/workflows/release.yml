@@ -165,28 +165,9 @@ jobs:
               size = os.path.getsize(path)
               print(f"\n→ {filename}  ({size/1024/1024:.1f} MB)")
 
-              # 1. Initiate upload
-              r = requests.post(f"{base}/v1/files", headers=headers, json={
-                  "name": filename,
-                  "mime_type": mime,
-                  "size": size,
-                  "service": "downloadable",
-                  "upload": {
-                      "parts": [{"number": 1, "chunk_start": 0, "chunk_end": size - 1}]
-                  }
-              }, timeout=30)
-              if not r.ok:
-                  print("  initiate upload failed:", r.status_code, r.text); sys.exit(1)
-              data    = r.json()
-              file_id = data["id"]
-              part    = data["upload"]["parts"][0]
-              s3_url  = part["url"]
-              # Polar returns required headers (e.g. x-amz-server-side-encryption)
-              # that MUST be sent with the PUT — they are part of the S3 signature.
-              s3_headers = part.get("headers", {})
-              print(f"  file_id={file_id}, extra headers: {list(s3_headers.keys())}")
-
-              # 2a. Compute SHA256 — Polar S3 bucket requires x-amz-checksum-sha256
+              # 1a. Compute SHA256 BEFORE calling Polar — so Polar can include it
+              #     in X-Amz-SignedHeaders of the presigned URL. If we add the header
+              #     after the URL is generated, S3 rejects it as "not signed" (403).
               import hashlib, base64
               sha256 = hashlib.sha256()
               with open(path, "rb") as f:
@@ -195,19 +176,45 @@ jobs:
               checksum_b64 = base64.b64encode(sha256.digest()).decode()
               print(f"  SHA256={checksum_b64[:20]}…")
 
-              # 2b. PUT to presigned S3 URL via curl (HTTP/1.1 required for presigned URLs)
+              # 1b. Initiate upload — pass checksum so Polar signs it in the presigned URL
+              r = requests.post(f"{base}/v1/files", headers=headers, json={
+                  "name": filename,
+                  "mime_type": mime,
+                  "size": size,
+                  "service": "downloadable",
+                  "upload": {
+                      "parts": [{
+                          "number": 1,
+                          "chunk_start": 0,
+                          "chunk_end": size - 1,
+                          "checksum_sha256_base64": checksum_b64,
+                      }]
+                  }
+              }, timeout=30)
+              if not r.ok:
+                  print("  initiate upload failed:", r.status_code, r.text); sys.exit(1)
+              data    = r.json()
+              file_id = data["id"]
+              part    = data["upload"]["parts"][0]
+              s3_url  = part["url"]
+              s3_headers = part.get("headers", {})
+              print(f"  file_id={file_id}, signed headers: {list(s3_headers.keys())}")
+
+              # 2. PUT to presigned S3 URL via curl
+              header_args = []
+              for k, v in s3_headers.items():
+                  header_args += ["--header", f"{k}: {v}"]
+
               result = subprocess.run([
                   "curl", "--http1.1",
                   "--fail-with-body", "--silent", "--show-error",
                   "--upload-file", path,
                   "--header", "Expect:",
-                  "--header", f"x-amz-checksum-sha256: {checksum_b64}",
                   "--dump-header", "-",
                   "--max-time", "600",
                   "--retry", "3",
                   "--retry-delay", "10",
-                  s3_url,
-              ], capture_output=True, text=True)
+              ] + header_args + [s3_url], capture_output=True, text=True)
 
               if result.returncode != 0:
                   print("  S3 upload failed")
