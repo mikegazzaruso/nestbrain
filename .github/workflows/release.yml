@@ -195,11 +195,12 @@ jobs:
                   print("  initiate upload failed:", r.status_code, r.text); sys.exit(1)
               data      = r.json()
               file_id   = data["id"]
-              file_path = data.get("path", "")
+              file_path = data.get("path") or data.get("name") or filename
               part      = data["upload"]["parts"][0]
-              s3_url  = part["url"]
+              s3_url    = part["url"]
               s3_headers = part.get("headers", {})
-              print(f"  file_id={file_id}, signed headers: {list(s3_headers.keys())}")
+              print(f"  file_id={file_id} path={file_path}")
+              print(f"  signed headers: {list(s3_headers.keys())}")
 
               # 2. PUT to presigned S3 URL via curl
               header_args = []
@@ -232,12 +233,16 @@ jobs:
               print(f"  S3 OK, ETag={etag}")
 
               # 3. Confirm upload
-              r2 = requests.post(f"{base}/v1/files/{file_id}/uploaded", headers=headers,
-                  json={"id": file_id, "path": file_path,
-                        "parts": [{"number": 1, "checksum_etag": etag,
-                                   "checksum_sha256_base64": checksum_b64}]}, timeout=30)
+              confirm_body = {
+                  "id": file_id,
+                  "path": file_path,
+                  "parts": [{"number": 1, "checksum_etag": etag}],
+              }
+              print(f"  confirming with path={file_path}")
+              r2 = requests.post(f"{base}/v1/files/{file_id}/uploaded",
+                  headers=headers, json=confirm_body, timeout=30)
               if not r2.ok:
-                  print("  confirm failed:", r2.status_code, r2.text); sys.exit(1)
+                  print("  confirm failed:", r2.status_code, r2.text[:400]); sys.exit(1)
               print("  confirmed")
 
               # 4. Attach to product
