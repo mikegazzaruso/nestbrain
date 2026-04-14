@@ -255,7 +255,9 @@ jobs:
 
           # 4. Attach files to the product's downloadables benefit.
           # Files are not attached directly to products — they belong to a
-          # 'downloadables' benefit that the product references.
+          # 'downloadables' benefit referenced by the product. The product GET
+          # already returns the full benefit (incl. properties.files), so we
+          # avoid an extra benefits:read call.
           print("\n=== Attaching files to downloadables benefit ===")
           prod = requests.get(f"{base}/v1/products/{product_id}",
               headers={"Authorization": f"Bearer {token}"}, timeout=30)
@@ -266,17 +268,10 @@ jobs:
           if not downloadables:
               print("  ERROR: product has no 'downloadables' benefit"); sys.exit(1)
           benefit_id = downloadables["id"]
-          print(f"  benefit_id={benefit_id}")
-
-          # Get current files + archived map (PATCH replaces the whole list)
-          b = requests.get(f"{base}/v1/benefits/{benefit_id}",
-              headers={"Authorization": f"Bearer {token}"}, timeout=30)
-          if not b.ok:
-              print("  benefit fetch failed:", b.status_code, b.text[:300]); sys.exit(1)
-          props = b.json().get("properties", {})
+          props = downloadables.get("properties", {})
           current_files = props.get("files", [])
           current_archived = props.get("archived", {})
-          print(f"  current files: {len(current_files)}")
+          print(f"  benefit_id={benefit_id}, current files: {len(current_files)}")
 
           # Merge: keep existing, append new ones (dedup, preserve order)
           merged = list(dict.fromkeys(current_files + uploaded_file_ids))
