@@ -6,6 +6,8 @@
 
 🌐 **Website**: [nestbrain.app](https://nestbrain.app)
 
+![NestBrain — integrated workspace with wiki, file tree, and live Claude Code terminal](docs/screenshots/workspace-terminal.png)
+
 ---
 
 ## Get NestBrain
@@ -44,6 +46,8 @@ But NestBrain is more than just a knowledge base. It's a **full integrated works
 
 ### 🧠 An AI that builds your wiki while you sleep
 Drop any source — a URL, a PDF, a GitHub repo, an arXiv paper, a YouTube video, an RSS feed — and NestBrain compiles it into a beautifully linked wiki. Concepts connect automatically. Gaps surface. Every article has backlinks, citations, and a clean Markdown body you can open in Obsidian too.
+
+![Wiki article view — "Privacy in AI" with concepts sidebar, related links, and linked references](docs/screenshots/wiki-article.png)
 
 ### 💻 A real workspace, not just a viewer
 - **VS Code-style file tree** with right-click rename/delete/new-file, auto-refreshed via native filesystem watchers (no manual refresh)
@@ -84,6 +88,21 @@ When you're done for the day — or just done with this work block — say the t
 - **Health Check** — LLM-powered wiki audit: orphans, broken links, stubs, gaps, inconsistencies
 - **Incremental compilation** — only new/changed sources are processed, ~3–5 LLM calls per source regardless of total wiki size
 - **Obsidian compatible** — `Library/Knowledge/` is a valid Obsidian vault; open it from Obsidian and work on the same data
+
+#### Ask your knowledge base anything
+Type a question in natural language. NestBrain runs hybrid search over your wiki, feeds relevant articles to the LLM as grounded context, and returns a structured answer with **only the citations the LLM actually used**. The answer is auto-saved back to the wiki so your questions become part of the knowledge base over time.
+
+![Ask view — Q&A with a structured answer and filtered citations linking back to wiki articles](docs/screenshots/ask-qa.png)
+
+#### Explore concept connections visually
+The Mind Map is an interactive radial graph of every concept in your wiki and how they link to each other. Click any node to jump straight to its article. Spot clusters, dead ends, and unexpected connections at a glance.
+
+![Mind Map view — radial concept graph centered on "local-ai" with connected topics](docs/screenshots/mind-map.png)
+
+#### Keep your wiki clean with Health Check
+NestBrain runs a full LLM-powered audit of your knowledge base: orphan articles (nothing links to them), broken links, stubs, content gaps, and inconsistencies. Every finding is actionable — click it and jump to the article.
+
+![Wiki Health dashboard — score, metrics, and findings list with actionable items](docs/screenshots/wiki-health.png)
 
 ### 🔒 Local-first, no cloud lock-in
 All your data lives in `NestBrain/` on your disk. No account required to use the app. No telemetry. No vendor lock-in. You can quit NestBrain tomorrow and your knowledge base is still right there, in Markdown, usable by any other tool that understands `.md` files.
