@@ -236,9 +236,12 @@ jobs:
               confirm_body = {
                   "id": file_id,
                   "path": file_path,
-                  "parts": [{"number": 1, "checksum_etag": etag}],
+                  "parts": [{
+                      "number": 1,
+                      "checksum_etag": etag,
+                      "checksum_sha256_base64": checksum_b64,
+                  }],
               }
-              print(f"  confirming with path={file_path}")
               r2 = requests.post(f"{base}/v1/files/{file_id}/uploaded",
                   headers=headers, json=confirm_body, timeout=30)
               if not r2.ok:
