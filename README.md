@@ -60,7 +60,7 @@ This is where NestBrain becomes something different. Every workspace ships with 
 
 Two skills drive this:
 
-#### `start_session` — *"Buongiorno, Claude"* / *"Good morning, Claude"*
+#### `start_session` — *"Good morning, Claude"*
 Launch `claude` in any project directory, then say either trigger phrase. The skill will:
 
 1. **Recap your previous session** — *"Yesterday you worked on…"* or *"In your previous session today you…"* — read directly from yesterday's session file plus the project's `.nest/STATE.md`
@@ -69,7 +69,7 @@ Launch `claude` in any project directory, then say either trigger phrase. The sk
 
 No more explaining your project to Claude from scratch. No more pasting context. You just say "good morning" and pick up exactly where you left off.
 
-#### `end_session` — *"Arrivederci, Claude"* / *"Goodbye, Claude"*
+#### `end_session` — *"Goodbye, Claude"*
 When you're done for the day — or just done with this work block — say the trigger phrase. The skill will:
 
 1. **Write a Summary** of what was done during the session
