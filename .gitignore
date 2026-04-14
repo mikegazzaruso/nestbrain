@@ -1,3 +1,8 @@
+# Landing page lives in its own repo (mikegazzaruso/nestbrain-landing).
+# Keep the directory here for local dev + rsync deploys, but never commit it
+# to the NestBrain repo.
+apps/landing/
+
 # Dependencies
 node_modules/
 

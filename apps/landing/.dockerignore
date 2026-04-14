@@ -1,6 +1,0 @@
-node_modules
-.next
-.env*
-*.md
-Dockerfile
-docker-compose*.yml
