@@ -1,0 +1,19 @@
+{
+  // The landing page lives in its own private repo (nestbrain-landing) but
+  // the working copy is physically at apps/landing/ so local dev + rsync
+  // deploys keep working. Tell VSCode to pick up that inner .git folder as
+  // a second repository so the SCM panel shows both repos side-by-side and
+  // file decorations inside apps/landing/ come from its own repo.
+  "git.scanRepositories": ["apps/landing"],
+
+  // Also open any sub-repo we find automatically at startup.
+  "git.openRepositoryInParentFolders": "always",
+
+  // Files inside apps/landing/ belong to a different repo — exclude them
+  // from the outer workspace search index so grep/find doesn't double-hit
+  // them and keep the file tree tidy.
+  "files.watcherExclude": {
+    "**/.next/**": true,
+    "**/node_modules/**": true
+  }
+}
