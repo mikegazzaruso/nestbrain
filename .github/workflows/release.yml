@@ -158,6 +158,7 @@ jobs:
               print("No artifacts found — nothing to upload")
               sys.exit(0)
 
+          uploaded_file_ids = []
           for filename in files:
               path = os.path.join(dist, filename)
               ext  = os.path.splitext(filename)[1]
@@ -250,19 +251,48 @@ jobs:
               if not r2.ok:
                   print("  confirm failed:", r2.status_code, r2.text[:400]); sys.exit(1)
               print("  confirmed")
+              uploaded_file_ids.append(file_id)
 
-              # 4. Attach to product
-              r3 = requests.post(f"{base}/v1/products/{product_id}/files/{file_id}",
-                  headers=headers, timeout=30)
-              if not r3.ok:
-                  if r3.status_code == 409:
-                      print("  already attached (409 — OK)")
-                  else:
-                      print("  attach failed:", r3.status_code, r3.text); sys.exit(1)
-              else:
-                  print("  attached to product")
+          # 4. Attach files to the product's downloadables benefit.
+          # Files are not attached directly to products — they belong to a
+          # 'downloadables' benefit that the product references.
+          print("\n=== Attaching files to downloadables benefit ===")
+          prod = requests.get(f"{base}/v1/products/{product_id}",
+              headers={"Authorization": f"Bearer {token}"}, timeout=30)
+          if not prod.ok:
+              print("  product fetch failed:", prod.status_code, prod.text[:300]); sys.exit(1)
+          benefits = prod.json().get("benefits", [])
+          downloadables = next((b for b in benefits if b.get("type") == "downloadables"), None)
+          if not downloadables:
+              print("  ERROR: product has no 'downloadables' benefit"); sys.exit(1)
+          benefit_id = downloadables["id"]
+          print(f"  benefit_id={benefit_id}")
 
-          print("\nAll files uploaded successfully.")
+          # Get current files + archived map (PATCH replaces the whole list)
+          b = requests.get(f"{base}/v1/benefits/{benefit_id}",
+              headers={"Authorization": f"Bearer {token}"}, timeout=30)
+          if not b.ok:
+              print("  benefit fetch failed:", b.status_code, b.text[:300]); sys.exit(1)
+          props = b.json().get("properties", {})
+          current_files = props.get("files", [])
+          current_archived = props.get("archived", {})
+          print(f"  current files: {len(current_files)}")
+
+          # Merge: keep existing, append new ones (dedup, preserve order)
+          merged = list(dict.fromkeys(current_files + uploaded_file_ids))
+          print(f"  merged files: {len(merged)} (added {len(merged) - len(current_files)})")
+
+          patch = requests.patch(f"{base}/v1/benefits/{benefit_id}",
+              headers=headers,
+              json={
+                  "type": "downloadables",
+                  "properties": {"files": merged, "archived": current_archived},
+              }, timeout=30)
+          if not patch.ok:
+              print("  attach failed:", patch.status_code, patch.text[:400]); sys.exit(1)
+          print("  attached to benefit")
+
+          print("\nAll files uploaded and attached successfully.")
           PYEOF
 
   release:
