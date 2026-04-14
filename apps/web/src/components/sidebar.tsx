@@ -125,7 +125,7 @@ export function Sidebar() {
             </h1>
             <span className="text-[10px] text-muted/40 italic">by NextEpochs</span>
           </div>
-          <p className="text-[11px] text-muted/60 mt-0.5">v0.10.0</p>
+          <p className="text-[11px] text-muted/60 mt-0.5">v0.10.1</p>
         </Link>
 
         {/* NestBrain file tree (Electron only, after onboarding) */}
