@@ -66,9 +66,7 @@
       ],
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
-      "notarize": {
-        "teamId": "RB39HEKKN6"
-      }
+      "notarize": true
     },
     "win": {
       "icon": "build/icon.ico",
