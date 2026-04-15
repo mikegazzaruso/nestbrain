@@ -1,6 +1,6 @@
 {
   "name": "@nestbrain/desktop",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "private": true,
   "description": "NestBrain native desktop app",
   "main": "dist/main.js",
@@ -30,6 +30,7 @@
     "copyright": "Copyright © 2026 NextEpochs",
     "npmRebuild": false,
     "afterPack": "build/after-pack.cjs",
+    "compression": "normal",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -85,7 +86,11 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "differentialPackage": false,
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true
     }
   }
 }
