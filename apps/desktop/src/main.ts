@@ -86,6 +86,7 @@ let mainWindow: BrowserWindow | null = null;
 let nextServer: UtilityProcess | null = null;
 let serverUrl: string | null = null;
 let currentPort: number | null = null;
+let lastServerOutput = "";
 
 const NESTBRAIN_SUBDIRS = [
   "Business",
@@ -208,12 +209,19 @@ async function startNextServer(reusePort = false): Promise<string> {
     serviceName: "nestbrain-next-server",
   });
 
-  nextServer.stdout?.on("data", (d: Buffer) =>
-    console.log("[next]", d.toString().trim()),
-  );
-  nextServer.stderr?.on("data", (d: Buffer) =>
-    console.error("[next]", d.toString().trim()),
-  );
+  lastServerOutput = "";
+  nextServer.stdout?.on("data", (d: Buffer) => {
+    const line = d.toString().trim();
+    console.log("[next]", line);
+    lastServerOutput += line + "\n";
+    if (lastServerOutput.length > 8000) lastServerOutput = lastServerOutput.slice(-6000);
+  });
+  nextServer.stderr?.on("data", (d: Buffer) => {
+    const line = d.toString().trim();
+    console.error("[next]", line);
+    lastServerOutput += "[stderr] " + line + "\n";
+    if (lastServerOutput.length > 8000) lastServerOutput = lastServerOutput.slice(-6000);
+  });
   nextServer.on("exit", (code: number) => {
     console.log(`[next] exited with code ${code}`);
     // Only quit if the main window closed. If we killed it for a restart, don't quit.
@@ -223,22 +231,53 @@ async function startNextServer(reusePort = false): Promise<string> {
   });
 
   const url = `http://127.0.0.1:${port}`;
-  await waitForServer(url, 30000);
+  await waitForServer(url, 60000);
   return url;
 }
 
 async function waitForServer(url: string, timeoutMs: number): Promise<void> {
   const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      const res = await fetch(url);
-      if (res.ok || res.status < 500) return;
-    } catch {
-      /* not ready yet */
+
+  // If the server process exits (crash, missing module, etc.) reject
+  // immediately instead of polling until timeout.
+  let serverExited = false;
+  let exitReason = "";
+  const onExit = (code: number) => {
+    serverExited = true;
+    exitReason = `Server process exited with code ${code}`;
+  };
+  nextServer?.on("exit", onExit);
+
+  try {
+    while (Date.now() - start < timeoutMs) {
+      if (serverExited) {
+        const output = lastServerOutput
+          ? `\n\nServer output:\n${lastServerOutput.slice(-3000)}`
+          : "\n\n(no output captured)";
+        throw new Error(`${exitReason}${output}`);
+      }
+      try {
+        // ANY HTTP response (even 500) means the server is alive and
+        // listening. A 500 just means a page render error (e.g. a native
+        // module failed to load on this platform) — the app can still
+        // show the UI and the user gets a visible error instead of a
+        // silent quit. Only ECONNREFUSED (caught below) means "not ready".
+        await fetch(url);
+        return;
+      } catch {
+        // ECONNREFUSED — server hasn't bound the port yet
+      }
+      await new Promise((r) => setTimeout(r, 200));
     }
-    await new Promise((r) => setTimeout(r, 200));
+    const output = lastServerOutput
+      ? `\n\nServer output:\n${lastServerOutput.slice(-3000)}`
+      : "\n\n(no output captured from server process)";
+    throw new Error(
+      `Next.js server did not respond within ${timeoutMs / 1000}s.${output}`,
+    );
+  } finally {
+    nextServer?.removeListener("exit", onExit);
   }
-  throw new Error(`Next.js server did not start within ${timeoutMs}ms`);
 }
 
 let shuttingDown = false;
