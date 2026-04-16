@@ -29,8 +29,21 @@ function runClaude(args: string[], stdin?: string): Promise<string> {
       }
     });
 
-    proc.on("error", (err) => {
-      reject(err);
+    proc.on("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "ENOENT") {
+        reject(
+          new Error(
+            'Claude CLI is not installed or not in your PATH.\n\n' +
+            'To fix this:\n' +
+            '  1. Install Claude Code: npm install -g @anthropic-ai/claude-code\n' +
+            '  2. Authenticate: claude auth login\n' +
+            '  3. Restart NestBrain\n\n' +
+            'Alternatively, switch to the OpenAI provider in Settings.',
+          ),
+        );
+      } else {
+        reject(err);
+      }
     });
 
     if (stdin) {
