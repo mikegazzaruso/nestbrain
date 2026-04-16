@@ -22,6 +22,8 @@ import {
   lstatSync,
   chmodSync,
   cpSync,
+  realpathSync,
+  readlinkSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -425,8 +427,107 @@ for (const rel of PRUNE_PATHS) {
   }
 }
 
+// === Step 6: DEREFERENCE every remaining symlink in the standalone tree ===
+// pnpm's .pnpm/ store is held together by relative symlinks
+// (e.g. .pnpm/next@.../node_modules/@swc/helpers → ../../../@swc+helpers@.../...).
+// On macOS this is fine because DMG preserves symlinks.  On Windows the NSIS
+// installer CANNOT create symlinks — they are silently lost during extraction,
+// producing MODULE_NOT_FOUND at runtime for @swc/helpers, react, styled-jsx,
+// and every other pnpm-hoisted transitive dependency.
+//
+// Fix: walk the entire standalone tree AFTER all other steps and replace every
+// symlink with a real copy of its target.  This makes the tree fully
+// self-contained with zero symlinks — portable to any OS and any installer.
+const STANDALONE_BASE = join(REPO_ROOT, "apps/web/.next/standalone");
+let dereferencedCount = 0;
+
+function derefAllSymlinks(dir) {
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const p = join(dir, entry.name);
+    if (entry.isSymbolicLink()) {
+      try {
+        // Resolve the real path the symlink points to
+        const realTarget = realpathSync(p);
+        const targetStat = statSync(realTarget);
+
+        // Remove the symlink
+        rmSync(p, { force: true });
+
+        if (targetStat.isDirectory()) {
+          cpSync(realTarget, p, { recursive: true, dereference: true });
+        } else {
+          cpSync(realTarget, p);
+        }
+        dereferencedCount++;
+      } catch {
+        // Dangling or broken — just remove it
+        try {
+          rmSync(p, { force: true });
+          dereferencedCount++;
+        } catch { /* ignore */ }
+      }
+    } else if (entry.isDirectory() && entry.name !== ".git") {
+      derefAllSymlinks(p);
+    }
+  }
+}
+
+console.log("Dereferencing all symlinks in standalone tree...");
+derefAllSymlinks(STANDALONE_BASE);
+console.log(`✓ dereferenced ${dereferencedCount} symlink(s)`);
+
+// === Step 7: Promote hoisted packages to apps/web/node_modules/ ===
+// pnpm's hoisted packages live at `node_modules/.pnpm/node_modules/<pkg>`.
+// After dereferencing, packages like `next` at `apps/web/node_modules/next`
+// are real directories — Node.js no longer follows the symlink into the
+// .pnpm store to find sibling deps (@swc/helpers, react, styled-jsx, etc.).
+// Fix: copy every package from the .pnpm/node_modules/ hoisted dir into
+// apps/web/node_modules/ so require() from inside next/dist/... finds them.
+const APP_WEB_NM = join(STANDALONE_BASE, "apps/web/node_modules");
+const HOISTED_NM = join(STANDALONE_STORE, "node_modules");
+let promotedCount = 0;
+
+function promoteHoistedPackage(name, src) {
+  const dest = join(APP_WEB_NM, name);
+  if (existsSync(dest)) return; // already there (e.g. next itself)
+  try {
+    const realSrc = realpathSync(src);
+    cpSync(realSrc, dest, { recursive: true, dereference: true });
+    promotedCount++;
+  } catch {
+    // If realpath fails the target is dangling — skip it
+  }
+}
+
+if (existsSync(HOISTED_NM)) {
+  for (const entry of readdirSync(HOISTED_NM, { withFileTypes: true })) {
+    if (entry.name.startsWith(".")) continue;
+    const entryPath = join(HOISTED_NM, entry.name);
+    if (entry.name.startsWith("@")) {
+      // Scoped package: enumerate sub-entries
+      try {
+        for (const sub of readdirSync(entryPath, { withFileTypes: true })) {
+          promoteHoistedPackage(`${entry.name}/${sub.name}`, join(entryPath, sub.name));
+        }
+      } catch { /* ignore */ }
+    } else {
+      promoteHoistedPackage(entry.name, entryPath);
+    }
+  }
+}
+if (promotedCount > 0) {
+  console.log(`✓ promoted ${promotedCount} hoisted package(s) into apps/web/node_modules/`);
+}
+
 console.log(
   `\nStandalone modules prepared: ${surgicalFiles} native files hydrated, ` +
   `${danglingRemoved} dangling scrubbed, top-level entries in place. ` +
-  `Pruned ${(prunedBytes / 1024 / 1024).toFixed(0)} MB of unused variants.`,
+  `Pruned ${(prunedBytes / 1024 / 1024).toFixed(0)} MB of unused variants. ` +
+  `${dereferencedCount} symlinks dereferenced.`,
 );
