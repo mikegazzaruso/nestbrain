@@ -41,7 +41,10 @@
     "files": [
       "dist/**/*",
       "package.json",
-      "node_modules/node-pty/**/*"
+      "node_modules/node-pty/**/*",
+      "!**/*.d.ts.map",
+      "!**/*.d.cts.map",
+      "!**/*.d.mts.map"
     ],
     "asarUnpack": [
       "node_modules/node-pty/**/*"
