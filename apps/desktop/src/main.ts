@@ -1066,8 +1066,8 @@ app.whenReady().then(async () => {
     : join(__dirname, "../build/icon.png");
   app.setAboutPanelOptions({
     applicationName: "NestBrain",
-    applicationVersion: "0.12.1",
-    version: "0.12.1",
+    applicationVersion: "0.12.2",
+    version: "0.12.2",
     copyright: "Copyright © 2026 NextEpochs. All rights reserved.",
     credits:
       "Created by Mike Gazzaruso (NextEpochs) in 2026.\n\nLLM‑powered personal knowledge base with an integrated workspace.",
