@@ -9,7 +9,7 @@
     "lint": "turbo lint",
     "test": "turbo test",
     "desktop:dev": "pnpm --filter @nestbrain/desktop dev",
-    "desktop:build": "pnpm --filter @nestbrain/web... build && pnpm desktop:copy-assets && pnpm desktop:prepare-standalone && pnpm --filter @nestbrain/desktop build",
+    "desktop:build": "pnpm --filter \"@nestbrain/web...\" --filter @nestbrain/sync build && pnpm desktop:copy-assets && pnpm desktop:prepare-standalone && pnpm --filter @nestbrain/desktop build",
     "desktop:copy-assets": "node apps/desktop/build/copy-assets.mjs",
     "desktop:prepare-standalone": "node apps/desktop/build/prepare-standalone.mjs",
     "desktop:package": "pnpm desktop:build && pnpm --filter @nestbrain/desktop package",
