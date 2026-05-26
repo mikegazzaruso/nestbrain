@@ -11,6 +11,7 @@ import {
   FolderOpen,
   ArrowRight,
 } from "lucide-react";
+import { SyncAccountSection } from "@/components/sync-account-section";
 
 interface OpenAIModel {
   id: string;
@@ -123,6 +124,8 @@ export default function SettingsPage() {
           <SettingsIcon size={20} className="text-muted" />
           <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         </div>
+
+        <SyncAccountSection />
 
         {/* LLM Provider */}
         <section className="mb-10">

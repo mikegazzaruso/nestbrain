@@ -13,7 +13,9 @@ import {
   Pencil,
   Trash2,
   ExternalLink,
+  Cloud,
 } from "lucide-react";
+import { useSync } from "@/lib/sync-context";
 
 interface FsEntry {
   name: string;
@@ -30,6 +32,14 @@ type CreateKind = "file" | "dir";
 
 export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
   const router = useRouter();
+  const { state: syncState } = useSync();
+  const syncEnabled = syncState.prefs.enabled && syncState.status !== "disabled";
+
+  // Compute the workspace-relative POSIX path so it matches the sync manifest.
+  function toRelPath(absPath: string): string {
+    if (!absPath.startsWith(rootPath + "/")) return absPath;
+    return absPath.slice(rootPath.length + 1).split(/[/\\]/).join("/");
+  }
   const [expanded, setExpanded] = useState<Set<string>>(
     new Set([rootPath, `${rootPath}/Projects`]),
   );
@@ -45,6 +55,10 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
   } | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [hardDeleteTarget, setHardDeleteTarget] = useState<{
+    absPath: string;
+    name: string;
+  } | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -140,10 +154,31 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
   }
 
   async function handleDelete(targetPath: string, name: string, isDir: boolean) {
-    if (!window.nestbrain?.fs?.delete) return;
+    if (!window.nestbrain) return;
     const kind = isDir ? "folder" : "file";
+    const relPath = toRelPath(targetPath);
+
+    // Sync ON + single file → soft-delete via the sync engine. The file is
+    // moved to .trash/ and the Drive copy follows. Other devices see the
+    // move on their next pull, so nothing is lost anywhere.
+    if (syncEnabled && !isDir && !relPath.startsWith(".trash/")) {
+      try {
+        await window.nestbrain.sync.softDelete(relPath);
+        if (selectedPath === targetPath) setSelectedPath(null);
+      } catch (err) {
+        window.alert(err instanceof Error ? err.message : "Move-to-trash failed");
+      }
+      return;
+    }
+
+    // Otherwise (sync off, or folder, or already in .trash/) → plain delete.
+    const extraMsg = relPath.startsWith(".trash/")
+      ? "\nThis item is in .trash/ — deleting will remove it permanently from this device."
+      : isDir
+        ? "\nAll its contents will be permanently removed."
+        : "";
     const ok = window.confirm(
-      `Delete ${kind} "${name}"?${isDir ? "\nAll its contents will be permanently removed." : ""}\n\nThis action cannot be undone.`,
+      `Delete ${kind} "${name}"?${extraMsg}\n\nThis action cannot be undone.`,
     );
     if (!ok) return;
     try {
@@ -151,6 +186,32 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
       if (selectedPath === targetPath) setSelectedPath(null);
     } catch (err) {
       window.alert(err instanceof Error ? err.message : "Delete failed");
+    }
+  }
+
+  // Hard-delete uses a custom modal instead of window.prompt (Electron
+  // blocks native prompts). The actual deletion happens in confirmHardDelete
+  // below, called by the HardDeleteDialog when the user types DELETE.
+  function handleHardDelete(targetPath: string, name: string, isDir: boolean) {
+    if (!window.nestbrain) return;
+    if (isDir) {
+      window.alert("Folder hard-delete isn't supported yet — delete files individually.");
+      return;
+    }
+    setHardDeleteTarget({ absPath: targetPath, name });
+  }
+
+  async function confirmHardDelete() {
+    if (!window.nestbrain || !hardDeleteTarget) return;
+    const { absPath } = hardDeleteTarget;
+    const relPath = toRelPath(absPath);
+    try {
+      await window.nestbrain.sync.hardDelete(relPath);
+      if (selectedPath === absPath) setSelectedPath(null);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Hard delete failed");
+    } finally {
+      setHardDeleteTarget(null);
     }
   }
 
@@ -297,8 +358,114 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
             setContextMenu(null);
             handleDelete(path, name, isDir);
           }}
+          onHardDelete={
+            syncEnabled && !contextMenu.isDir
+              ? () => {
+                  const { path, name, isDir } = contextMenu;
+                  setContextMenu(null);
+                  handleHardDelete(path, name, isDir);
+                }
+              : undefined
+          }
+          syncEnabled={syncEnabled}
         />
       )}
+      {hardDeleteTarget && (
+        <HardDeleteDialog
+          name={hardDeleteTarget.name}
+          onCancel={() => setHardDeleteTarget(null)}
+          onConfirm={confirmHardDelete}
+        />
+      )}
+    </div>
+  );
+}
+
+function HardDeleteDialog({
+  name,
+  onCancel,
+  onConfirm,
+}: {
+  name: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const ready = typed === "DELETE";
+
+  async function doConfirm() {
+    if (!ready || busy) return;
+    setBusy(true);
+    try {
+      await onConfirm();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[300] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onCancel();
+      }}
+    >
+      <div className="w-[460px] max-w-[90vw] rounded-2xl bg-card border border-red-500/30 shadow-2xl shadow-black/60 p-6 space-y-5">
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <Trash2 size={16} className="text-red-400" />
+            <h2 className="text-base font-semibold text-red-400">
+              Delete on all devices?
+            </h2>
+          </div>
+          <p className="text-[12px] text-muted/80 leading-relaxed">
+            <span className="font-mono text-foreground">{name}</span> will be
+            permanently removed from your Google Drive. Other devices signed in
+            to NestBrain with this account will move their local copy to{" "}
+            <code className="text-accent/80 bg-accent/5 px-1 rounded">
+              .trash/
+            </code>{" "}
+            on their next sync — but the file will no longer be recoverable from
+            Drive. This cannot be undone.
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="block text-[10px] text-muted/60 uppercase tracking-wider">
+            Type DELETE to confirm
+          </label>
+          <input
+            autoFocus
+            type="text"
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && ready) doConfirm();
+              if (e.key === "Escape") onCancel();
+            }}
+            placeholder="DELETE"
+            className="w-full px-3 py-2 bg-background border border-red-500/30 rounded-lg text-sm font-mono placeholder:text-muted/30 focus:outline-none focus:border-red-500/60 focus:ring-1 focus:ring-red-500/20"
+          />
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-1">
+          <button
+            onClick={onCancel}
+            disabled={busy}
+            className="px-4 py-2 rounded-lg text-xs text-muted hover:text-foreground transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={doConfirm}
+            disabled={!ready || busy}
+            className="px-4 py-2 rounded-lg text-xs font-medium bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            {busy ? "Deleting…" : "Delete forever"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -310,6 +477,8 @@ interface ContextMenuProps {
   onOpen?: () => void;
   onRename: () => void;
   onDelete: () => void;
+  onHardDelete?: () => void;
+  syncEnabled: boolean;
 }
 
 function ContextMenu({
@@ -318,17 +487,19 @@ function ContextMenu({
   onOpen,
   onRename,
   onDelete,
+  onHardDelete,
+  syncEnabled,
 }: ContextMenuProps) {
   // Clamp within viewport so it doesn't clip on the right/bottom
-  const MENU_W = 160;
-  const MENU_H = 120;
+  const MENU_W = 220;
+  const MENU_H = onHardDelete ? 170 : 120;
   const left = Math.min(x, window.innerWidth - MENU_W - 8);
   const top = Math.min(y, window.innerHeight - MENU_H - 8);
   return (
     <div
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
-      className="fixed z-[200] w-40 py-1 bg-card border border-border rounded-lg shadow-xl shadow-black/40 text-[12px]"
+      className="fixed z-[200] w-56 py-1 bg-card border border-border rounded-lg shadow-xl shadow-black/40 text-[12px]"
       style={{ left, top }}
     >
       {onOpen && (
@@ -348,10 +519,18 @@ function ContextMenu({
       />
       <MenuItem
         icon={<Trash2 size={12} />}
-        label="Delete"
+        label={syncEnabled ? "Move to .trash/" : "Delete"}
         onClick={onDelete}
         danger
       />
+      {onHardDelete && (
+        <MenuItem
+          icon={<Cloud size={12} />}
+          label="Delete on all devices…"
+          onClick={onHardDelete}
+          danger
+        />
+      )}
     </div>
   );
 }

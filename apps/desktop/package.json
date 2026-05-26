@@ -1,6 +1,6 @@
 {
   "name": "@nestbrain/desktop",
-  "version": "0.11.3",
+  "version": "0.12.0",
   "private": true,
   "description": "NestBrain native desktop app",
   "main": "dist/main.js",
@@ -14,6 +14,8 @@
     "package:win": "electron-builder --win"
   },
   "dependencies": {
+    "@nestbrain/shared": "workspace:*",
+    "@nestbrain/sync": "workspace:*",
     "node-pty": "^1.0.0"
   },
   "devDependencies": {

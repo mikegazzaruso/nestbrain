@@ -2,7 +2,7 @@
 
 **Your AI-powered second brain, packaged as a native workspace for people who actually build things.** Raw sources go in, a structured Markdown wiki comes out — compiled, linked, and maintained entirely by AI. Inside a full integrated workspace with a VS Code-style editor, a real terminal, and deep **Claude Code** integration that finally makes your LLM remember what you were doing yesterday.
 
-![NestBrain](https://img.shields.io/badge/status-v0.11.0-brightgreen) ![TypeScript](https://img.shields.io/badge/TypeScript-100%25-blue) ![License](https://img.shields.io/badge/license-GPL--3.0-blue) ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)
+![NestBrain](https://img.shields.io/badge/status-v0.12.0-brightgreen) ![TypeScript](https://img.shields.io/badge/TypeScript-100%25-blue) ![License](https://img.shields.io/badge/license-GPL--3.0-blue) ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)
 
 🌐 **Website**: [nestbrain.app](https://nestbrain.app)
 
@@ -25,6 +25,7 @@ If you just want to **download, install, and start using it**, the **official si
 | **Install time** | ~5 minutes (Node 20 + pnpm required) | **30 seconds — just open the DMG** |
 | **Signed & notarized** | ❌ You have to strip quarantine manually | ✅ **Apple Developer ID signed + notarized** — opens cleanly on first launch |
 | **Windows installer** | Build it yourself | ✅ **NSIS installer ready to run** |
+| **Multi-device sync** | ✅ Via your own Google Drive | ✅ Via your own Google Drive |
 | **Updates** | `git pull && pnpm desktop:build` | ✅ **Direct download from your account, forever** |
 | **Support** | Community (GitHub issues) | ✅ Priority email support |
 
@@ -104,8 +105,20 @@ NestBrain runs a full LLM-powered audit of your knowledge base: orphan articles 
 
 ![Wiki Health dashboard — score, metrics, and findings list with actionable items](docs/screenshots/wiki-health.png)
 
-### 🔒 Local-first, no cloud lock-in
-All your data lives in `NestBrain/` on your disk. No account required to use the app. No telemetry. No vendor lock-in. You can quit NestBrain tomorrow and your knowledge base is still right there, in Markdown, usable by any other tool that understands `.md` files.
+### ☁️ Sync across every device you use
+Sign in with Google and your NestBrain workspace stays in step on every machine: laptop, desktop, work, anywhere. Edits made on one PC arrive on the others within ~60 seconds — or instantly if you click "Sync now". The workspace lives in a dedicated `NestBrain-Sync/` folder inside **your own Google Drive**, and NestBrain uses the `drive.file` OAuth scope, which means the app can only see files NestBrain itself put there — never the rest of your Drive.
+
+The whole thing is opt-in, per-device, and refuses to lose data:
+
+- **Union model.** A delete on one machine never destroys data elsewhere — local deletes move to `.trash/`, which is also synced, so anything you remove is recoverable from any of your devices. Only an explicit "Delete on all devices…" with typed `DELETE` confirmation propagates a hard delete.
+- **Keep-both on conflict.** Edit the same note on two machines while offline? Both versions are kept — your local file stays, the other arrives next to it as `foo.conflict-<timestamp>.md`. You decide what to merge.
+- **Privacy by design.** OAuth refresh tokens are encrypted in the OS keychain (`Keychain` on macOS, `DPAPI` on Windows). Your OpenAI API key, NestBrain settings, the local vector index, and anything looking like `.env`/`secrets` are never uploaded.
+- **Optional `Projects/`.** Your code projects can be excluded with one toggle. `node_modules`, `.git`, `dist`, `.next`, and friends are always excluded.
+
+The full architecture — manifest format, conflict semantics, the `drive.file` trade-off, known limits — lives in [`docs/SYNC.md`](docs/SYNC.md).
+
+### 🔒 Local-first, with optional sync — no cloud lock-in
+All your data lives in `NestBrain/` on your disk. No account required to use the app. No telemetry. No vendor lock-in. You can quit NestBrain tomorrow and your knowledge base is still right there, in Markdown, usable by any other tool that understands `.md` files. If you want a NestBrain on a second machine, sign in with Google and turn on sync — your files stay on your devices and inside *your* Drive, never on a NestBrain server.
 
 ---
 
@@ -151,6 +164,21 @@ The free path. Takes ~5 minutes if you have Node and pnpm installed.
 - **Node.js 20+**
 - **pnpm** (`npm install -g pnpm`)
 - **Claude CLI** authenticated (`claude auth login`) **or** an OpenAI API key
+
+### Google OAuth setup (only required if you want Sync)
+
+NestBrain syncs through your own Google Drive, which means **each fork needs its own Google OAuth Desktop client** — we deliberately don't ship credentials in the repo so users of your build don't authenticate against someone else's Cloud project. (The supporter binaries from [nestbrain.app](https://nestbrain.app) ship with our credentials pre-configured.)
+
+1. Go to [Google Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials).
+2. **Create credentials → OAuth client ID → Application type: Desktop app.** Copy the Client ID and the Client secret.
+3. **OAuth consent screen → External**, in Testing mode for development. Add your Google account as a test user. Add the scopes `openid`, `email`, `profile`, `.../auth/drive.file`.
+4. In your local clone:
+   ```bash
+   cp apps/desktop/src/auth/oauth-config.example.ts apps/desktop/src/auth/oauth-config.ts
+   # then edit oauth-config.ts and paste in your Client ID + Client secret
+   ```
+
+`apps/desktop/src/auth/oauth-config.ts` is gitignored, so your credentials stay on your machine. You can skip these steps if you don't need Sync — the app still works for the local-only knowledge base.
 
 ### Run the native app in development mode
 ```bash
@@ -242,7 +270,7 @@ Open `NestBrain/Library/Knowledge/` as a vault in Obsidian and work on the same 
 
 ## Configuration
 
-Settings are managed through the **Settings** page in the app. They are persisted in `NestBrain/.nestbrain/settings.json` and include:
+Settings are managed through the **Settings** page in the app. App preferences are persisted in `NestBrain/.nestbrain/settings.json`:
 
 - LLM provider (Claude CLI / OpenAI) and model
 - OpenAI API key
@@ -250,6 +278,20 @@ Settings are managed through the **Settings** page in the app. They are persiste
 - Onboarding completion flag
 - NestBrain workspace location (relocatable from Settings)
 - Danger-zone wipe
+
+**Sync & account state** lives separately, per-device, in your OS user data directory (so it doesn't travel with the workspace itself):
+
+- **`<userData>/auth.enc`** — your Google OAuth refresh token, encrypted with the OS keychain via Electron `safeStorage`
+- **`<userData>/sync-prefs.json`** — sync toggles (enabled, includeProjects, soft-limit, trash retention) for **this machine** only
+- **`<workspace>/.nestbrain/sync-manifest.json`** — per-file sync state (MD5 + Drive id + mtime + size) used as the diff cache
+
+Toggles available in Settings → Sync & Account:
+
+- **Enable sync on this device** — master on/off
+- **Include Projects/ folder** — opt-in for code projects (build artifacts always excluded)
+- **Sign in / Sign out** with Google
+
+The exact sync semantics — what gets uploaded, what's excluded, how deletes and conflicts behave — are documented in [`docs/SYNC.md`](docs/SYNC.md).
 
 ---
 

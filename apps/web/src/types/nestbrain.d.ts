@@ -1,5 +1,7 @@
 export {};
 
+import type { AuthState, SyncPreferences, SyncState } from "@nestbrain/shared";
+
 interface FsEntry {
   name: string;
   path: string;
@@ -48,6 +50,22 @@ declare global {
           newName: string,
         ) => Promise<{ ok: true; newPath: string }>;
         onChange: (callback: () => void) => () => void;
+      };
+      auth: {
+        getState: () => Promise<AuthState>;
+        signIn: () => Promise<void>;
+        signOut: () => Promise<void>;
+        cancelSignIn: () => Promise<void>;
+        onStateChanged: (callback: (state: AuthState) => void) => () => void;
+      };
+      sync: {
+        getState: () => Promise<SyncState | null>;
+        setPreferences: (prefs: Partial<SyncPreferences>) => Promise<void>;
+        syncNow: () => Promise<void>;
+        cancel: () => Promise<void>;
+        softDelete: (relPath: string) => Promise<void>;
+        hardDelete: (relPath: string) => Promise<void>;
+        onStateChanged: (callback: (state: SyncState) => void) => () => void;
       };
       terminal: {
         create: (opts: { cwd: string; cols?: number; rows?: number }) => Promise<CreateTerminalResult>;

@@ -28,6 +28,7 @@ To find the NestBrain root: starting from your current working directory, walk *
 | `Daily/`                 | User + Skills      | Daily notes and session logs (see Sessions below).                      |
 | `Skills/`                | User               | Skill definitions. Each subfolder is a skill with a `SKILL.md`.         |
 | `Business/`, `Context/`, `Skills/`, `Team/` | User | Structured personal notes. Edit on request.                          |
+| `.trash/`                | NestBrain (Sync)   | Soft-deleted files. Synced across devices. Treat as recoverable; don't auto-empty. |
 | `CLAUDE.md` (this file)  | NestBrain           | Workspace orientation. You are reading it.                              |
 
 ## How to behave in each area
@@ -54,6 +55,16 @@ nestbrain serve                 # Start web UI
 - Internal links use `[[wikilinks]]`.
 - Use relative paths (portability).
 - Default to English. If the user writes in another language, match theirs.
+
+## Sync awareness
+
+If the user has signed in to NestBrain with Google and enabled sync, this workspace is being mirrored across all of their devices via a `NestBrain-Sync/` folder in their own Google Drive. Practical consequences:
+
+- **Files appear and disappear on their own.** A new file may show up because another device pushed it. Don't be surprised; it's not your bug.
+- **Deletes use `.trash/`, not `rm`.** When the user asks you to "delete" or "remove" a file inside the workspace, prefer moving it to `<nestbrain_root>/.trash/<original-relative-path>` rather than hard-removing it. The Sync engine treats `.trash/` as a synced recovery zone. The user can hard-delete via the NestBrain UI's "Delete on all devices…" if they really want it gone everywhere.
+- **Conflict files.** If you see a file like `notes.conflict-2026-05-26T15-30-12.md` next to `notes.md`, two devices edited the same file while disconnected. Don't auto-merge; surface it to the user and let them decide what to keep.
+- **Don't write inside `.nestbrain/sync-manifest.json`.** It's the sync engine's bookkeeping; NestBrain owns it.
+- **`Projects/` may or may not sync.** It's a per-device opt-in. Don't assume code projects move with the rest of the workspace.
 
 ## Sessions
 
@@ -98,6 +109,7 @@ Log format: `- HH:mm — [Projects/<name>] one-line macro description`. Use `[wo
 - Never delete `.nestbrain/raw/` — user-provided source material, not regenerable.
 - Never edit files in `Library/Knowledge/` directly — the wiki is regenerable via `nestbrain compile`, but hand-edits will be overwritten.
 - The wiki *is* regenerable. Raw sources and user notes are *not*. When in doubt about ownership, ask.
+- When sync is on, prefer moving files to `<nestbrain_root>/.trash/` over hard-deleting. Hard deletes propagate to every device the user owns; the user has to confirm that explicitly through the NestBrain UI.
 
 ---
 

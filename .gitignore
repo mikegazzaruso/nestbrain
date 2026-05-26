@@ -25,6 +25,9 @@ data/settings.json
 .env.local
 .env.*.local
 
+# OAuth client credentials — fork-specific. Copy oauth-config.example.ts.
+apps/desktop/src/auth/oauth-config.ts
+
 # IDE
 .vscode/*
 !.vscode/settings.json

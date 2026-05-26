@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { AuthState, SyncPreferences, SyncState } from "@nestbrain/shared";
 
 // Mark HTML element so web UI can adjust for native chrome
 window.addEventListener("DOMContentLoaded", () => {
@@ -64,6 +65,40 @@ contextBridge.exposeInMainWorld("nestbrain", {
       const handler = () => callback();
       ipcRenderer.on("nestbrain:fs:changed", handler);
       return () => ipcRenderer.off("nestbrain:fs:changed", handler);
+    },
+  },
+
+  // Auth (Google OAuth)
+  auth: {
+    getState: (): Promise<AuthState> =>
+      ipcRenderer.invoke("nestbrain:auth:getState"),
+    signIn: (): Promise<void> => ipcRenderer.invoke("nestbrain:auth:signIn"),
+    signOut: (): Promise<void> => ipcRenderer.invoke("nestbrain:auth:signOut"),
+    cancelSignIn: (): Promise<void> =>
+      ipcRenderer.invoke("nestbrain:auth:cancelSignIn"),
+    onStateChanged: (callback: (state: AuthState) => void) => {
+      const handler = (_e: unknown, state: AuthState) => callback(state);
+      ipcRenderer.on("nestbrain:auth:stateChanged", handler);
+      return () => ipcRenderer.off("nestbrain:auth:stateChanged", handler);
+    },
+  },
+
+  // Sync (Google Drive)
+  sync: {
+    getState: (): Promise<SyncState | null> =>
+      ipcRenderer.invoke("nestbrain:sync:getState"),
+    setPreferences: (prefs: Partial<SyncPreferences>): Promise<void> =>
+      ipcRenderer.invoke("nestbrain:sync:setPreferences", prefs),
+    syncNow: (): Promise<void> => ipcRenderer.invoke("nestbrain:sync:syncNow"),
+    cancel: (): Promise<void> => ipcRenderer.invoke("nestbrain:sync:cancel"),
+    softDelete: (relPath: string): Promise<void> =>
+      ipcRenderer.invoke("nestbrain:sync:softDelete", relPath),
+    hardDelete: (relPath: string): Promise<void> =>
+      ipcRenderer.invoke("nestbrain:sync:hardDelete", relPath),
+    onStateChanged: (callback: (state: SyncState) => void) => {
+      const handler = (_e: unknown, state: SyncState) => callback(state);
+      ipcRenderer.on("nestbrain:sync:stateChanged", handler);
+      return () => ipcRenderer.off("nestbrain:sync:stateChanged", handler);
     },
   },
 

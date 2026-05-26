@@ -38,3 +38,25 @@ export const INDEX_FILES = {
   master: "_index.md",
   concepts: "_concepts.md",
 } as const;
+
+// ============================================================
+// Google OAuth (Desktop app, PKCE flow)
+// ============================================================
+//
+// The clientId + clientSecret for this OAuth client are NOT stored in this
+// repo. They live in `apps/desktop/src/auth/oauth-config.ts`, which is
+// gitignored. See `apps/desktop/src/auth/oauth-config.example.ts` for the
+// shape, and `README.md` → "Build from Source" for how to create your own
+// Google OAuth Desktop client and wire it up.
+
+export const GOOGLE_OAUTH_ENDPOINTS = {
+  authEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
+  tokenEndpoint: "https://oauth2.googleapis.com/token",
+  revokeEndpoint: "https://oauth2.googleapis.com/revoke",
+  userinfoEndpoint: "https://openidconnect.googleapis.com/v1/userinfo",
+  // drive.file = access only to files the app creates (no access to the rest of the user's Drive)
+  scopes: ["openid", "email", "profile", "https://www.googleapis.com/auth/drive.file"],
+} as const;
+
+// Name of the folder NestBrain creates inside the user's Drive to hold the synced vault.
+export const SYNC_DRIVE_FOLDER_NAME = "NestBrain-Sync";

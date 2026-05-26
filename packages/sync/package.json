@@ -1,5 +1,5 @@
 {
-  "name": "@nestbrain/db",
+  "name": "@nestbrain/sync",
   "version": "0.11.0",
   "private": true,
   "main": "./dist/index.js",
@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "@nestbrain/shared": "workspace:*",
-    "chromadb": "^1.9.2",
-    "chromadb-default-embed": "^2.13.2"
+    "chokidar": "^3.6.0"
   }
 }

@@ -2,6 +2,7 @@
 
 import { Terminal as TerminalIcon, ChevronUp, ChevronDown } from "lucide-react";
 import { useTerminal } from "@/lib/terminal-context";
+import { SyncIndicator } from "./sync-indicator";
 
 export function StatusBar() {
   const { sessions, panelOpen, toggleOrOpen } = useTerminal();
@@ -9,6 +10,7 @@ export function StatusBar() {
 
   return (
     <div className="h-6 shrink-0 border-t border-border bg-sidebar flex items-center justify-end px-2 text-[11px] text-muted/70">
+      <SyncIndicator />
       <button
         onClick={toggleOrOpen}
         className={`flex items-center gap-1.5 px-2.5 h-full hover:bg-card transition-colors ${

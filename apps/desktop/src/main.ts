@@ -35,6 +35,8 @@ try {
   console.error("[pty] native binding failed to load:", err);
 }
 import { execSync } from "node:child_process";
+import { AuthManager } from "./auth";
+import { SyncManager } from "./sync";
 
 // On macOS, packaged Electron apps don't inherit the user's shell PATH —
 // they get a minimal PATH like /usr/bin:/bin which doesn't include common
@@ -87,6 +89,8 @@ let nextServer: UtilityProcess | null = null;
 let serverUrl: string | null = null;
 let currentPort: number | null = null;
 let lastServerOutput = "";
+let authManager: AuthManager | null = null;
+let syncManager: SyncManager | null = null;
 
 const NESTBRAIN_SUBDIRS = [
   "Business",
@@ -299,6 +303,14 @@ function killNextServer(): Promise<void> {
 }
 
 async function restartNextServer(): Promise<void> {
+  // In dev the Next.js server is run externally (`pnpm --filter @nestbrain/web dev`)
+  // and we don't manage its lifecycle from here. A NestBrain location change
+  // means the dev server is now pointing at a stale data dir, but a hard
+  // restart of that external process is outside our control — log and move on.
+  if (isDev) {
+    console.warn("[dev] NestBrain location changed; restart `pnpm --filter @nestbrain/web dev` manually to pick up the new data dir");
+    return;
+  }
   await killNextServer();
   // Give the OS a moment to release the port (TIME_WAIT)
   await new Promise((r) => setTimeout(r, 300));
@@ -933,10 +945,12 @@ ipcMain.handle(
 
     // Close terminals, stop the watcher, and stop the Next.js server —
     // they all hold references to the old data dir (terminal cwd, watch
-    // handles, open file handles, env vars).
+    // handles, open file handles, env vars). In dev the Next server is
+    // external (next dev), so we skip the kill+restart dance — the user
+    // will need to restart `pnpm --filter @nestbrain/web dev` manually.
     killAllPtySessions();
     stopNestBrainWatcher();
-    await killNextServer();
+    if (!isDev) await killNextServer();
 
     let moved = false;
     let created = false;
@@ -956,17 +970,19 @@ ipcMain.handle(
 
     // Give the OS a moment to release the port, then restart Next.js
     // reusing the same port so the renderer's fetch calls transparently
-    // hit the new server without a window reload.
-    await new Promise((r) => setTimeout(r, 300));
-    let attempts = 0;
-    while (attempts < 5) {
-      try {
-        serverUrl = await startNextServer(true);
-        break;
-      } catch (err) {
-        attempts++;
-        if (attempts >= 5) throw err;
-        await new Promise((r) => setTimeout(r, 500));
+    // hit the new server without a window reload. Skipped in dev (see above).
+    if (!isDev) {
+      await new Promise((r) => setTimeout(r, 300));
+      let attempts = 0;
+      while (attempts < 5) {
+        try {
+          serverUrl = await startNextServer(true);
+          break;
+        } catch (err) {
+          attempts++;
+          if (attempts >= 5) throw err;
+          await new Promise((r) => setTimeout(r, 500));
+        }
       }
     }
 
@@ -984,6 +1000,56 @@ ipcMain.handle(
   },
 );
 
+// === Auth (Google OAuth) ===
+ipcMain.handle("nestbrain:auth:getState", () => {
+  return authManager?.getState() ?? { status: "signed-out" };
+});
+
+ipcMain.handle("nestbrain:auth:signIn", async () => {
+  if (!authManager) throw new Error("Auth not initialized");
+  await authManager.signIn();
+});
+
+ipcMain.handle("nestbrain:auth:signOut", async () => {
+  if (!authManager) throw new Error("Auth not initialized");
+  await authManager.signOut();
+});
+
+ipcMain.handle("nestbrain:auth:cancelSignIn", () => {
+  authManager?.cancelSignIn();
+});
+
+// === Sync ===
+ipcMain.handle("nestbrain:sync:getState", () => {
+  return syncManager?.getState() ?? null;
+});
+
+ipcMain.handle("nestbrain:sync:setPreferences", async (_e, prefs) => {
+  if (!syncManager) throw new Error("Sync not initialized");
+  await syncManager.setPreferences(prefs);
+});
+
+ipcMain.handle("nestbrain:sync:syncNow", async () => {
+  if (!syncManager) throw new Error("Sync not initialized");
+  await syncManager.syncNow();
+});
+
+ipcMain.handle("nestbrain:sync:cancel", () => {
+  syncManager?.cancel();
+});
+
+ipcMain.handle("nestbrain:sync:softDelete", async (_e, relPath: string) => {
+  if (!syncManager) throw new Error("Sync not initialized");
+  if (typeof relPath !== "string" || relPath === "") throw new Error("Invalid path");
+  await syncManager.softDelete(relPath);
+});
+
+ipcMain.handle("nestbrain:sync:hardDelete", async (_e, relPath: string) => {
+  if (!syncManager) throw new Error("Sync not initialized");
+  if (typeof relPath !== "string" || relPath === "") throw new Error("Invalid path");
+  await syncManager.hardDelete(relPath);
+});
+
 app.whenReady().then(async () => {
   if (process.platform === "darwin" && !app.isPackaged && app.dock) {
     try {
@@ -1000,8 +1066,8 @@ app.whenReady().then(async () => {
     : join(__dirname, "../build/icon.png");
   app.setAboutPanelOptions({
     applicationName: "NestBrain",
-    applicationVersion: "0.10.0",
-    version: "0.10.0",
+    applicationVersion: "0.12.0",
+    version: "0.12.0",
     copyright: "Copyright © 2026 NextEpochs. All rights reserved.",
     credits:
       "Created by Mike Gazzaruso (NextEpochs) in 2026.\n\nLLM‑powered personal knowledge base with an integrated workspace.",
@@ -1011,6 +1077,35 @@ app.whenReady().then(async () => {
   });
 
   setupMenu();
+
+  // Auth manager: load any persisted session and start broadcasting state
+  // changes to the renderer. safeStorage requires app.ready, so this must
+  // happen here and not at module scope.
+  authManager = new AuthManager();
+  authManager.onChange((state) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("nestbrain:auth:stateChanged", state);
+    }
+  });
+  await authManager.init();
+
+  // Sync manager depends on auth + a workspace path. It subscribes to auth
+  // changes internally and recomputes its status (signed-in + enabled = idle;
+  // anything else = disabled).
+  syncManager = new SyncManager({
+    authManager,
+    getWorkspacePath: () => {
+      const b = readBootstrap();
+      return b.nestBrainPath ?? null;
+    },
+  });
+  syncManager.onChange((state) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("nestbrain:sync:stateChanged", state);
+    }
+  });
+  await syncManager.init();
+
   try {
     if (!isDev) {
       serverUrl = await startNextServer();
