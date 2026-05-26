@@ -6,13 +6,14 @@
   "main": "dist/main.js",
   "scripts": {
     "ensure-oauth-config": "node build/ensure-oauth-config.mjs",
+    "dereference-workspace-deps": "node build/dereference-workspace-deps.mjs",
     "build:ts": "pnpm ensure-oauth-config && tsc -p tsconfig.json",
     "build": "pnpm build:ts",
     "dev": "pnpm build:ts && NESTBRAIN_DEV=1 electron .",
     "start": "electron .",
-    "package": "electron-builder",
-    "package:mac": "electron-builder --mac",
-    "package:win": "electron-builder --win"
+    "package": "pnpm dereference-workspace-deps && electron-builder",
+    "package:mac": "pnpm dereference-workspace-deps && electron-builder --mac",
+    "package:win": "pnpm dereference-workspace-deps && electron-builder --win"
   },
   "dependencies": {
     "@nestbrain/shared": "workspace:*",
