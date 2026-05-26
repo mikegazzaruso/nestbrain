@@ -49,7 +49,7 @@ export default function Home() {
         {/* Header */}
         <div className="mb-10">
           <h1 className="text-3xl font-bold tracking-tight mb-2">
-            <span className="text-accent">Mind</span>Nest
+            <span className="text-accent">Nest</span>Brain
           </h1>
           <p className="text-muted text-sm">Your LLM-powered knowledge base</p>
         </div>
