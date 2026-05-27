@@ -63,6 +63,12 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: RB39HEKKN6
+          # Google OAuth Desktop client credentials, baked into oauth-config.ts
+          # at build time by apps/desktop/build/ensure-oauth-config.mjs. Without
+          # these, the packaged app gets a placeholder Client ID and sign-in
+          # fails at runtime with Google "invalid_client".
+          NESTBRAIN_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          NESTBRAIN_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
         run: |
           if [ -z "$CSC_LINK" ]; then
             echo "No MAC_CERTIFICATE secret — building unsigned"
@@ -107,6 +113,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build & package Windows installer
+        env:
+          # Same baked-at-build OAuth credentials as the macOS job. Without
+          # them the .exe ships with the placeholder Client ID and sign-in
+          # fails at runtime with Google "invalid_client".
+          NESTBRAIN_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          NESTBRAIN_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
         run: pnpm desktop:package:win
 
       - name: Upload Windows artifact
