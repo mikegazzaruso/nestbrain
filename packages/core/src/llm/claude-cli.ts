@@ -2,6 +2,49 @@ import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import type { LLMProviderInterface, LLMResponse } from "./provider";
 
+/**
+ * Pull a JSON object/array out of a model reply that may contain a fenced
+ * code block, prose preamble, or trailing chatter. We try strict parse first,
+ * then look for the largest balanced { … } or [ … ] block.
+ */
+function parseJsonReply<T>(text: string): T {
+  const t = text.trim();
+  try {
+    return JSON.parse(t) as T;
+  } catch {
+    /* fall through */
+  }
+  // Strip a single fenced code block if the whole reply is wrapped in one.
+  const fence = /^```(?:json)?\s*\n([\s\S]*?)\n```\s*$/.exec(t);
+  if (fence) {
+    try {
+      return JSON.parse(fence[1]) as T;
+    } catch {
+      /* fall through */
+    }
+  }
+  // Find the first { or [ and try to balance-match to its closer. Naive
+  // (ignores strings) but works for typical model replies.
+  const start = t.search(/[{[]/);
+  if (start >= 0) {
+    const open = t[start];
+    const close = open === "{" ? "}" : "]";
+    let depth = 0;
+    for (let i = start; i < t.length; i++) {
+      const c = t[i];
+      if (c === open) depth++;
+      else if (c === close) {
+        depth--;
+        if (depth === 0) {
+          const slice = t.slice(start, i + 1);
+          return JSON.parse(slice) as T;
+        }
+      }
+    }
+  }
+  throw new Error(`No parseable JSON in model reply: ${t.slice(0, 200)}…`);
+}
+
 function runClaude(args: string[], stdin?: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const proc = spawn("claude", args, {
@@ -73,6 +116,16 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
       "--max-turns",
       "1",
       "--no-session-persistence",
+      // We want a single-turn text completion — no tool calls. Without
+      // these the user's global ~/.claude (skills, agents, settings) leaks
+      // in and the CLI tries to use Bash/Read on startup (e.g. orphan-
+      // session checks from a project's CLAUDE.md), burning the single
+      // turn before we get an answer.
+      "--disable-slash-commands",
+      "--tools",
+      "",
+      "--setting-sources",
+      "",
     ];
 
     if (systemPrompt) {
@@ -107,23 +160,31 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
       "-",
       "--output-format",
       "json",
-      "--json-schema",
-      JSON.stringify(schema),
       "--model",
       this.model,
       "--max-turns",
       "1",
       "--no-session-persistence",
+      "--disable-slash-commands",
+      "--tools",
+      "",
+      "--setting-sources",
+      "",
     ];
 
-    const stdout = await runClaude(args, prompt);
+    // --json-schema in the current Claude CLI is a soft hint that triggers
+    // tool-use mode (StructuredOutput tool), which doesn't compose well with
+    // --tools "". We instead inline the schema in the prompt and require the
+    // model to reply with JSON-only — then extract.
+    const inlined =
+      `${prompt}\n\n--\nReply with ONLY a single JSON value matching this JSON Schema. No prose, no code fences, no preamble.\n\nSchema:\n${JSON.stringify(schema)}`;
+    const stdout = await runClaude(args, inlined);
 
     const data = JSON.parse(stdout);
-
     if (data.is_error) {
       throw new Error(`Claude CLI error: ${data.result}`);
     }
 
-    return JSON.parse(data.result) as T;
+    return parseJsonReply<T>(data.result ?? "");
   }
 }
