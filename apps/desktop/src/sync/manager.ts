@@ -22,6 +22,11 @@ import { loadSyncPrefs, saveSyncPrefs } from "./prefs-store";
 
 const PULL_INTERVAL_MS = 60_000;
 const WATCHER_DEBOUNCE_MS = 3000;
+// Safety-net full-walk push to catch anything chokidar missed (fsevents can
+// lose state across macOS sleep/wake, network volume mounts, etc.). Long
+// enough that it doesn't dominate the budget; short enough that the user
+// doesn't have to hit "Sync now" to recover.
+const RECONCILE_INTERVAL_MS = 10 * 60_000;
 
 type Listener = (state: SyncState) => void;
 
@@ -41,6 +46,7 @@ export class SyncManager {
   private currentRun: AbortController | null = null;
   private watcher: WorkspaceWatcher | null = null;
   private pullTimer: ReturnType<typeof setInterval> | null = null;
+  private reconcileTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(private readonly opts: SyncManagerOptions) {}
 
@@ -110,9 +116,12 @@ export class SyncManager {
     await this.runCycle("full");
   }
 
-  /** Push-only cycle triggered by the watcher. */
-  private async pushOnly(): Promise<void> {
-    await this.runCycle("push");
+  /** Push-only cycle triggered by the watcher.
+   * `hintedPaths` is the set of POSIX-relative paths chokidar saw change —
+   * passing it lets the engine skip the full workspace walk.
+   */
+  private async pushOnly(hintedPaths?: string[]): Promise<void> {
+    await this.runCycle("push", hintedPaths);
   }
 
   /** Pull-only cycle triggered by the periodic timer. */
@@ -153,7 +162,7 @@ export class SyncManager {
 
   // ---------- internals ----------
 
-  private async runCycle(mode: "full" | "push" | "pull"): Promise<void> {
+  private async runCycle(mode: "full" | "push" | "pull", hintedPaths?: string[]): Promise<void> {
     if (!this.prefs.enabled) {
       this.error = "Sync is disabled — turn it on first.";
       this.broadcast();
@@ -163,7 +172,9 @@ export class SyncManager {
       console.log(`[sync] skipping ${mode} — already ${this.status}`);
       return;
     }
-    console.log(`[sync] cycle start: ${mode}`);
+    console.log(
+      `[sync] cycle start: ${mode}${hintedPaths ? ` (${hintedPaths.length} hinted paths)` : ""}`,
+    );
     const ctx = await this.openCycleContext();
     if (!ctx) {
       console.warn(`[sync] cycle ${mode} aborted: ${this.error}`);
@@ -179,7 +190,7 @@ export class SyncManager {
     try {
       let result;
       if (mode === "pull") result = await engine.runPull();
-      else if (mode === "push") result = await engine.runPush();
+      else if (mode === "push") result = await engine.runPush(hintedPaths);
       else result = await engine.runFullCycle();
 
       console.log(
@@ -262,11 +273,13 @@ export class SyncManager {
   private startBackgroundLoops(): void {
     this.startWatcher();
     this.startPullTimer();
+    this.startReconcileTimer();
   }
 
   private stopBackgroundLoops(): void {
     void this.stopWatcher();
     this.stopPullTimer();
+    this.stopReconcileTimer();
   }
 
   private startWatcher(): void {
@@ -277,11 +290,12 @@ export class SyncManager {
       workspacePath: workspace,
       includeProjects: this.prefs.includeProjects,
       debounceMs: WATCHER_DEBOUNCE_MS,
-      onChanged: () => {
+      onChanged: (hint) => {
         // Local change settled — push it to Drive. Skip if a cycle is
-        // already running; it'll catch the new state.
+        // already running; the next watcher fire (or the next manual sync)
+        // will carry whatever we miss.
         if (this.status === "scanning" || this.status === "syncing") return;
-        void this.pushOnly();
+        void this.pushOnly(hint.paths);
       },
       onError: (err) => console.error("[sync] watcher error:", err),
     });
@@ -307,6 +321,24 @@ export class SyncManager {
     if (this.pullTimer) {
       clearInterval(this.pullTimer);
       this.pullTimer = null;
+    }
+  }
+
+  private startReconcileTimer(): void {
+    if (this.reconcileTimer) return;
+    this.reconcileTimer = setInterval(() => {
+      if (this.status !== "idle") return;
+      // No hint → engine.runPush walks the whole workspace. Cheap when nothing
+      // changed (the mtime/size fast-path skips everything) but covers
+      // chokidar gaps.
+      void this.pushOnly();
+    }, RECONCILE_INTERVAL_MS);
+  }
+
+  private stopReconcileTimer(): void {
+    if (this.reconcileTimer) {
+      clearInterval(this.reconcileTimer);
+      this.reconcileTimer = null;
     }
   }
 

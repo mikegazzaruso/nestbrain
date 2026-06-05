@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { SYNC_DRIVE_FOLDER_NAME } from "@nestbrain/shared";
 import type { SyncPreferences, SyncProgress } from "@nestbrain/shared";
 import type { DriveAdapter, DriveFile } from "./drive-adapter";
-import type { Manifest, ManifestFileEntry, WalkEntry } from "./types";
+import type { Manifest, WalkEntry } from "./types";
 import { buildExcludes } from "./excludes";
 import { walk } from "./walker";
 import { hashFile } from "./hash";
@@ -46,54 +46,72 @@ export class SyncEngine {
   /** Pull-only cycle. Used by the periodic poll. */
   async runPull(): Promise<CycleResult> {
     const start = Date.now();
-    await this.ensureRoot();
-    const { downloaded, conflicts, softDeletes } = await this.pull();
-    this.opts.manifest.lastSyncAt = Date.now();
-    await this.opts.persistManifest();
-    return {
-      uploaded: 0,
-      downloaded,
-      conflicts,
-      softDeletes,
-      skippedFiles: [],
-      durationMs: Date.now() - start,
-    };
+    try {
+      await this.ensureRoot();
+      const { downloaded, conflicts, softDeletes } = await this.pull();
+      this.opts.manifest.lastSyncAt = Date.now();
+      return {
+        uploaded: 0,
+        downloaded,
+        conflicts,
+        softDeletes,
+        skippedFiles: [],
+        durationMs: Date.now() - start,
+      };
+    } finally {
+      // Persist once per cycle — including on abort/error — so partial progress isn't lost
+      // but we don't pay the atomic-rewrite cost per-file the way the old loop-internal
+      // saves did.
+      await this.opts.persistManifest();
+    }
   }
 
-  /** Push-only cycle. Used by the watcher and by the "Sync now" button. */
-  async runPush(): Promise<CycleResult> {
+  /** Push-only cycle. Used by the watcher and by the "Sync now" button.
+   *
+   * If `hintedPaths` is provided (set of POSIX-relative paths the watcher saw
+   * change), we skip the full workspace walk and only inspect those paths.
+   * Without a hint we fall back to a full walk — used by manual sync and by
+   * the initial cycle after sign-in.
+   */
+  async runPush(hintedPaths?: string[]): Promise<CycleResult> {
     const start = Date.now();
-    await this.ensureRoot();
-    const { uploaded, skippedFiles } = await this.push();
-    this.opts.manifest.lastSyncAt = Date.now();
-    await this.opts.persistManifest();
-    return {
-      uploaded,
-      downloaded: 0,
-      conflicts: 0,
-      softDeletes: 0,
-      skippedFiles,
-      durationMs: Date.now() - start,
-    };
+    try {
+      await this.ensureRoot();
+      const { uploaded, skippedFiles } = await this.push(hintedPaths);
+      this.opts.manifest.lastSyncAt = Date.now();
+      return {
+        uploaded,
+        downloaded: 0,
+        conflicts: 0,
+        softDeletes: 0,
+        skippedFiles,
+        durationMs: Date.now() - start,
+      };
+    } finally {
+      await this.opts.persistManifest();
+    }
   }
 
   /** Pull then push — the canonical "sync everything" cycle. */
   async runFullCycle(): Promise<CycleResult> {
     const start = Date.now();
-    await this.ensureRoot();
-    const pullRes = await this.pull();
-    this.checkAborted();
-    const pushRes = await this.push();
-    this.opts.manifest.lastSyncAt = Date.now();
-    await this.opts.persistManifest();
-    return {
-      uploaded: pushRes.uploaded,
-      downloaded: pullRes.downloaded,
-      conflicts: pullRes.conflicts,
-      softDeletes: pullRes.softDeletes,
-      skippedFiles: pushRes.skippedFiles,
-      durationMs: Date.now() - start,
-    };
+    try {
+      await this.ensureRoot();
+      const pullRes = await this.pull();
+      this.checkAborted();
+      const pushRes = await this.push();
+      this.opts.manifest.lastSyncAt = Date.now();
+      return {
+        uploaded: pushRes.uploaded,
+        downloaded: pullRes.downloaded,
+        conflicts: pullRes.conflicts,
+        softDeletes: pullRes.softDeletes,
+        skippedFiles: pushRes.skippedFiles,
+        durationMs: Date.now() - start,
+      };
+    } finally {
+      await this.opts.persistManifest();
+    }
   }
 
   // ---------- internals ----------
@@ -103,21 +121,49 @@ export class SyncEngine {
     if (!manifest.rootFolderDriveId) {
       manifest.rootFolderDriveId = await drive.ensureFolder(SYNC_DRIVE_FOLDER_NAME, "root");
       manifest.folders[""] = manifest.rootFolderDriveId;
-      await this.opts.persistManifest();
     }
     this.checkAborted();
   }
 
   // ===== PUSH =====
 
-  private async push(): Promise<{ uploaded: number; skippedFiles: SkippedFile[] }> {
+  private async push(hintedPaths?: string[]): Promise<{ uploaded: number; skippedFiles: SkippedFile[] }> {
     const { workspacePath, prefs } = this.opts;
     const isExcluded = buildExcludes({ includeProjects: prefs.includeProjects });
 
-    this.emit({ total: 0, done: 0, skipped: 0, currentFile: "Scanning workspace…" });
+    this.emit({ total: 0, done: 0, skipped: 0, currentFile: "Scanning workspace…" }, true);
     const candidates: WalkEntry[] = [];
-    for await (const entry of walk(workspacePath, isExcluded)) {
-      candidates.push(entry);
+    if (hintedPaths && hintedPaths.length > 0) {
+      // Watcher-targeted push: only the paths chokidar saw change. Each one
+      // still goes through the mtime/size fast-path in pushOne, so unchanged
+      // files cost ~one stat and zero hashes.
+      for (const relPath of hintedPaths) {
+        this.checkAborted();
+        if (isExcluded(relPath)) continue;
+        const absPath = join(workspacePath, relPath);
+        try {
+          const s = await stat(absPath);
+          if (!s.isFile()) continue;
+          if (s.size > prefs.maxFileSizeBytes) {
+            // pushOne would skip it; we'd rather record it as too-large here so
+            // the manager can surface it.
+            continue;
+          }
+          candidates.push({
+            relPath,
+            absPath,
+            size: s.size,
+            mtime: s.mtimeMs,
+          });
+        } catch {
+          // Hinted file disappeared between event and now (e.g. tmp file in an
+          // atomic save). Skip silently.
+        }
+      }
+    } else {
+      for await (const entry of walk(workspacePath, isExcluded)) {
+        candidates.push(entry);
+      }
     }
     this.checkAborted();
 
@@ -132,7 +178,7 @@ export class SyncEngine {
 
     let done = 0;
     let uploaded = 0;
-    this.emit({ total: toProcess.length, done, skipped: skippedFiles.length });
+    this.emit({ total: toProcess.length, done, skipped: skippedFiles.length }, true);
 
     for (const f of toProcess) {
       this.checkAborted();
@@ -198,7 +244,7 @@ export class SyncEngine {
       mtime: f.mtime,
       size: f.size,
     };
-    await this.opts.persistManifest();
+    // Manifest is persisted at end-of-cycle (incl. abort) by runPush/runFullCycle.
     return true;
   }
 
@@ -251,7 +297,6 @@ export class SyncEngine {
           size: st.size,
         };
         downloaded += 1;
-        await this.opts.persistManifest();
         continue;
       }
 
@@ -278,7 +323,6 @@ export class SyncEngine {
             mtime: localStat.mtimeMs,
             size: localStat.size,
           };
-          await this.opts.persistManifest();
         }
         continue;
       }
@@ -294,7 +338,6 @@ export class SyncEngine {
           size: st.size,
         };
         downloaded += 1;
-        await this.opts.persistManifest();
         continue;
       }
 
@@ -303,7 +346,6 @@ export class SyncEngine {
       const conflictPath = makeConflictPath(localAbsPath);
       await drive.downloadFile(remote.id, conflictPath);
       conflicts += 1;
-      await this.opts.persistManifest();
     }
 
     // Phase 2: detect Drive-side hard-deletes (file in manifest but not in Drive).
@@ -340,7 +382,6 @@ export class SyncEngine {
       };
       delete manifest.files[relPath];
       softDeletes += 1;
-      await this.opts.persistManifest();
     }
 
     return { downloaded, conflicts, softDeletes };
@@ -449,9 +490,14 @@ export class SyncEngine {
   }
 
   private lastEmitAt = 0;
-  private emit(p: SyncProgress): void {
+  private emit(p: SyncProgress, force = false): void {
     const now = Date.now();
-    if (now - this.lastEmitAt < 80 && p.bytesUploaded !== undefined) return;
+    // Coalesce all progress emits to ≥100ms apart — the renderer can't
+    // usefully consume more, and a tight push loop over thousands of files
+    // would otherwise drown the IPC channel. `force` is for must-show frames
+    // (initial scan, terminal totals) where dropping the emit would leave the
+    // UI showing stale state.
+    if (!force && now - this.lastEmitAt < 100) return;
     this.lastEmitAt = now;
     this.opts.onProgress(p);
   }
