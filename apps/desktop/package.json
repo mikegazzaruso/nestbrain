@@ -1,6 +1,6 @@
 {
   "name": "@nestbrain/desktop",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
   "description": "NestBrain native desktop app",
   "main": "dist/main.js",
@@ -58,6 +58,10 @@
       {
         "from": "../../skeleton",
         "to": "skeleton"
+      },
+      {
+        "from": "build/cli",
+        "to": "cli"
       }
     ],
     "mac": {
@@ -95,7 +99,8 @@
       "perMachine": false,
       "differentialPackage": false,
       "deleteAppDataOnUninstall": false,
-      "runAfterFinish": true
+      "runAfterFinish": true,
+      "include": "build/installer.nsh"
     }
   }
 }

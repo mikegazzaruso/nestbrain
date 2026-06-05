@@ -10,13 +10,14 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get("q");
     const limit = parseInt(searchParams.get("limit") ?? "10");
+    const project = searchParams.get("project") || undefined;
 
     if (!query) {
       return NextResponse.json({ error: "q parameter is required" }, { status: 400 });
     }
 
     const { wikiPath } = getDataPaths();
-    const results = await search({ query, limit, wikiPath });
+    const results = await search({ query, limit, wikiPath, project });
 
     return NextResponse.json({ results });
   } catch (error) {

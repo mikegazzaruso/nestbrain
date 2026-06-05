@@ -8,6 +8,8 @@ export interface SearchOptions {
   query: string;
   limit?: number;
   wikiPath?: string;
+  /** When set, only return results tagged with this project. */
+  project?: string;
 }
 
 // Hybrid search weights
@@ -35,8 +37,8 @@ export async function search(options: SearchOptions): Promise<SearchResult[]> {
   const candidateLimit = Math.max(limit * 3, 20);
 
   const [semanticResultsRaw, keywordResultsRaw] = await Promise.all([
-    semanticSearch(options.query, wikiPath, candidateLimit),
-    keywordSearch(options.query, wikiPath, candidateLimit),
+    semanticSearch(options.query, wikiPath, candidateLimit, options.project),
+    keywordSearch(options.query, wikiPath, candidateLimit, options.project),
   ]);
 
   // Normalize each score set to [0, 1] so the two channels are comparable.
@@ -62,26 +64,56 @@ export async function search(options: SearchOptions): Promise<SearchResult[]> {
   return merged.slice(0, limit);
 }
 
-async function semanticSearch(query: string, wikiPath: string, limit: number): Promise<SearchResult[]> {
+async function semanticSearch(
+  query: string,
+  wikiPath: string,
+  limit: number,
+  project?: string,
+): Promise<SearchResult[]> {
   try {
     const vectorStore = new VectorStore(wikiPath);
     const count = await vectorStore.count();
     if (count === 0) return [];
 
-    const results = await vectorStore.search(query, limit);
+    const results = await vectorStore.search(query, limit, project);
     return results.map((r) => ({
       articleId: r.id,
       title: r.title,
       snippet: r.snippet.slice(0, 200),
       score: r.score,
       filePath: r.filePath,
+      projects: r.projects,
     }));
   } catch {
     return [];
   }
 }
 
-async function keywordSearch(query: string, wikiPath: string, limit: number): Promise<SearchResult[]> {
+function readProjectsFromFrontmatter(content: string): string[] {
+  const fm = /^---\n([\s\S]*?)\n---/.exec(content);
+  if (!fm) return [];
+  const inner = fm[1];
+  const out: string[] = [];
+  const single = /^project:\s*(.+)$/m.exec(inner);
+  if (single) {
+    out.push(single[1].trim().replace(/^["']|["']$/g, ""));
+  }
+  const multi = /^projects:\s*\[(.*?)\]/m.exec(inner);
+  if (multi) {
+    for (const t of multi[1].split(",")) {
+      const v = t.trim().replace(/^["']|["']$/g, "");
+      if (v) out.push(v);
+    }
+  }
+  return out;
+}
+
+async function keywordSearch(
+  query: string,
+  wikiPath: string,
+  limit: number,
+  project?: string,
+): Promise<SearchResult[]> {
   // Extract meaningful terms (drop stop words, short words)
   const stopWords = new Set(["a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
     "have", "has", "had", "do", "does", "did", "will", "would", "could", "should", "may", "might",
@@ -126,6 +158,11 @@ async function keywordSearch(query: string, wikiPath: string, limit: number): Pr
       const content = await readFile(filePath, "utf-8");
       const contentLower = content.toLowerCase();
       const fileSlug = basename(file, ".md").toLowerCase();
+      const projects = readProjectsFromFrontmatter(content);
+      // Restrictive filter: when a project is set, skip everything not
+      // tagged with it (untagged generic articles included — they're noise
+      // when the user wants project-scoped answers).
+      if (project && !projects.includes(project)) continue;
 
       let score = 0;
 
@@ -154,6 +191,7 @@ async function keywordSearch(query: string, wikiPath: string, limit: number): Pr
         snippet: body.slice(0, 200),
         score,
         filePath: `${dir}/${file}`,
+        ...(projects.length > 0 ? { projects } : {}),
       });
     }
   }

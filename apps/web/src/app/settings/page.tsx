@@ -12,6 +12,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { SyncAccountSection } from "@/components/sync-account-section";
+import { CliInstallSection } from "@/components/cli-install-section";
 
 interface OpenAIModel {
   id: string;
@@ -305,6 +306,9 @@ export default function SettingsPage() {
             </div>
           </div>
         </section>
+
+        {/* CLI on PATH */}
+        <CliInstallSection />
 
         {/* Save button */}
         <div className="flex items-center gap-3">

@@ -20,3 +20,12 @@ export function getDataPaths() {
     wikiPath,
   };
 }
+
+/**
+ * NestBrain workspace root — the directory that contains `.nestbrain/`.
+ * Derived from the data dir's parent. The knowledge queue uses this as its
+ * anchor because pending/rejected/accepted dirs are siblings of `raw/`.
+ */
+export function getWorkspacePath(): string {
+  return resolve(getDataDir(), "..");
+}

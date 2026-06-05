@@ -75,6 +75,29 @@ declare global {
         onData: (id: string, callback: (data: string) => void) => () => void;
         onExit: (id: string, callback: (code: number) => void) => () => void;
       };
+      cli: {
+        status: () => Promise<{
+          supported: boolean;
+          target: string | null;
+          source: string;
+          installed: boolean;
+          stale: boolean;
+        }>;
+        install: () => Promise<{
+          supported: boolean;
+          target: string | null;
+          source: string;
+          installed: boolean;
+          stale: boolean;
+        }>;
+        uninstall: () => Promise<{
+          supported: boolean;
+          target: string | null;
+          source: string;
+          installed: boolean;
+          stale: boolean;
+        }>;
+      };
     };
   }
 }

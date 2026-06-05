@@ -46,6 +46,7 @@ export {
   installHook,
   uninstallHook,
   getHookStatus,
+  countAcceptedUncompiled,
 } from "./knowledge";
 
 // Runtime loaders that must be registered by the consumer app.

@@ -102,6 +102,19 @@ contextBridge.exposeInMainWorld("nestbrain", {
     },
   },
 
+  // CLI on PATH (Install / Uninstall)
+  cli: {
+    status: (): Promise<{
+      supported: boolean;
+      target: string | null;
+      source: string;
+      installed: boolean;
+      stale: boolean;
+    }> => ipcRenderer.invoke("nestbrain:cli:status"),
+    install: () => ipcRenderer.invoke("nestbrain:cli:install"),
+    uninstall: () => ipcRenderer.invoke("nestbrain:cli:uninstall"),
+  },
+
   // Terminal
   terminal: {
     create: (opts: { cwd: string; cols?: number; rows?: number }): Promise<CreateTerminalResult> =>

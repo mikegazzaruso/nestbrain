@@ -9,6 +9,13 @@ interface VectorEntry {
   type: string;
   content: string;     // first ~500 chars for snippet
   embedding: number[];
+  /**
+   * Projects that contributed to this entry. Empty/undefined = generic
+   * knowledge (no specific project attribution). For source summaries
+   * derived from a project atom this is `[<project>]`; for concepts that
+   * may span projects it can hold the union of contributing project tags.
+   */
+  projects?: string[];
 }
 
 interface VectorIndex {
@@ -46,7 +53,14 @@ export class VectorStore {
   }
 
   /** Add or update a document in the vector store */
-  async upsert(id: string, title: string, filePath: string, type: string, fullContent: string): Promise<void> {
+  async upsert(
+    id: string,
+    title: string,
+    filePath: string,
+    type: string,
+    fullContent: string,
+    projects?: string[],
+  ): Promise<void> {
     await this.load();
 
     // Strip frontmatter for embedding
@@ -60,7 +74,15 @@ export class VectorStore {
     // Remove existing entry if present
     this.index.entries = this.index.entries.filter((e) => e.id !== id);
 
-    this.index.entries.push({ id, title, filePath, type, content: snippet, embedding });
+    this.index.entries.push({
+      id,
+      title,
+      filePath,
+      type,
+      content: snippet,
+      embedding,
+      ...(projects && projects.length > 0 ? { projects } : {}),
+    });
   }
 
   /** Remove a document */
@@ -69,30 +91,44 @@ export class VectorStore {
     this.index.entries = this.index.entries.filter((e) => e.id !== id);
   }
 
-  /** Semantic search */
-  async search(query: string, topK: number = 10): Promise<Array<{
+  /** Semantic search. `project` filter is RESTRICTIVE: when set, only return
+   * entries whose `projects` array contains it. Untagged ("generic") entries
+   * are excluded — they show up only when no filter is set. When `project`
+   * is unset, all entries participate (no scoping). */
+  async search(
+    query: string,
+    topK: number = 10,
+    project?: string,
+  ): Promise<Array<{
     id: string;
     title: string;
     filePath: string;
     type: string;
     snippet: string;
     score: number;
+    projects?: string[];
   }>> {
     await this.load();
 
     if (this.index.entries.length === 0) return [];
 
+    const candidates = project
+      ? this.index.entries.filter((e) => e.projects?.includes(project))
+      : this.index.entries;
+    if (candidates.length === 0) return [];
+
     // Embed the query
     const [queryEmbedding] = await embed([query]);
 
     // Score all entries
-    const scored = this.index.entries.map((entry) => ({
+    const scored = candidates.map((entry) => ({
       id: entry.id,
       title: entry.title,
       filePath: entry.filePath,
       type: entry.type,
       snippet: entry.content,
       score: cosineSimilarity(queryEmbedding, entry.embedding),
+      projects: entry.projects,
     }));
 
     // Sort by score descending, take top K
@@ -100,6 +136,20 @@ export class VectorStore {
 
     // Only return entries with a reasonable similarity (> 0.2)
     return scored.filter((s) => s.score > 0.2).slice(0, topK);
+  }
+
+  /** Enumerate distinct project tags + a count of indexed entries per project. */
+  async projectCounts(): Promise<Array<{ project: string; count: number }>> {
+    await this.load();
+    const counts = new Map<string, number>();
+    for (const e of this.index.entries) {
+      for (const p of e.projects ?? []) {
+        counts.set(p, (counts.get(p) ?? 0) + 1);
+      }
+    }
+    return [...counts.entries()]
+      .map(([project, count]) => ({ project, count }))
+      .sort((a, b) => b.count - a.count);
   }
 
   /** Check if a document is indexed */

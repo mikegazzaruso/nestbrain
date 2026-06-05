@@ -13,6 +13,8 @@ export interface AskOptions {
   wikiPath?: string;
   llm: LLMProviderInterface;
   topK?: number;
+  /** When set, scope the retrieval to articles tagged with this project. */
+  project?: string;
 }
 
 export async function ask(options: AskOptions): Promise<QAResponse> {
@@ -20,7 +22,12 @@ export async function ask(options: AskOptions): Promise<QAResponse> {
   const topK = options.topK ?? 8;
 
   // Semantic search for relevant articles
-  const results = await search({ query: options.question, limit: topK, wikiPath });
+  const results = await search({
+    query: options.question,
+    limit: topK,
+    wikiPath,
+    project: options.project,
+  });
 
   // Load article contents
   const articles: string[] = [];

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Send, Trash2 } from "lucide-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
+import { ProjectFilter } from "@/components/project-filter";
 
 interface QAEntry {
   question: string;
@@ -15,6 +16,18 @@ export default function AskPage() {
   const [question, setQuestion] = useState("");
   const [history, setHistory] = useState<QAEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [project, setProject] = useState<string | null>(null);
+
+  // Persist the user's last project pick across page reloads — they're
+  // usually scoping to one thing for a few queries in a row.
+  useEffect(() => {
+    const saved = localStorage.getItem("nestbrain-ask-project");
+    if (saved) setProject(saved);
+  }, []);
+  useEffect(() => {
+    if (project) localStorage.setItem("nestbrain-ask-project", project);
+    else localStorage.removeItem("nestbrain-ask-project");
+  }, [project]);
 
   async function handleAsk(e: React.FormEvent) {
     e.preventDefault();
@@ -28,7 +41,7 @@ export default function AskPage() {
       const res = await fetch("/api/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q }),
+        body: JSON.stringify({ question: q, project: project ?? undefined }),
       });
       const data = await res.json();
 
@@ -205,27 +218,29 @@ export default function AskPage() {
 
       {/* Input */}
       <div className="border-t border-border p-4">
-        <form
-          onSubmit={handleAsk}
-          className="max-w-3xl mx-auto flex items-center gap-3"
-        >
-          <input
-            type="text"
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            placeholder="Ask anything about your knowledge base..."
-            className="flex-1 px-4 py-3 bg-card border border-border rounded-xl text-sm text-foreground placeholder:text-muted/50 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
-            disabled={loading}
-            autoFocus
-          />
-          <button
-            type="submit"
-            disabled={loading || !question.trim()}
-            className="p-3 bg-accent text-background rounded-xl hover:bg-accent-hover transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            <Send size={16} />
-          </button>
-        </form>
+        <div className="max-w-3xl mx-auto">
+          <div className="flex justify-end mb-2">
+            <ProjectFilter value={project} onChange={setProject} />
+          </div>
+          <form onSubmit={handleAsk} className="flex items-center gap-3">
+            <input
+              type="text"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              placeholder={project ? `Ask about ${project}…` : "Ask anything about your knowledge base..."}
+              className="flex-1 px-4 py-3 bg-card border border-border rounded-xl text-sm text-foreground placeholder:text-muted/50 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
+              disabled={loading}
+              autoFocus
+            />
+            <button
+              type="submit"
+              disabled={loading || !question.trim()}
+              className="p-3 bg-accent text-background rounded-xl hover:bg-accent-hover transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <Send size={16} />
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );

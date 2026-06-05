@@ -9,7 +9,7 @@ import {
   UtilityProcess,
 } from "electron";
 import { createServer } from "node:net";
-import { join, resolve, sep } from "node:path";
+import { join, dirname, resolve, sep } from "node:path";
 import {
   existsSync,
   mkdirSync,
@@ -34,7 +34,7 @@ try {
 } catch (err) {
   console.error("[pty] native binding failed to load:", err);
 }
-import { execSync } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { AuthManager } from "./auth";
 import { SyncManager } from "./sync";
 
@@ -1048,6 +1048,149 @@ ipcMain.handle("nestbrain:sync:hardDelete", async (_e, relPath: string) => {
   if (!syncManager) throw new Error("Sync not initialized");
   if (typeof relPath !== "string" || relPath === "") throw new Error("Invalid path");
   await syncManager.hardDelete(relPath);
+});
+
+// ====== CLI on PATH (macOS / Windows) ======
+
+/**
+ * Where the user's PATH-installed `nestbrain` symlink/wrapper lives.
+ * - macOS: /usr/local/bin/nestbrain (matches Homebrew's bin and VS Code's
+ *   `code` command convention). Requires sudo to write.
+ * - Windows: %LOCALAPPDATA%/NestBrain/cli/nestbrain.bat — user-scoped so
+ *   no admin prompt is needed; the install also appends that dir to the
+ *   user-level PATH via setx.
+ */
+function cliInstallTarget(): string | null {
+  if (process.platform === "darwin") return "/usr/local/bin/nestbrain";
+  if (process.platform === "win32") {
+    const local = process.env.LOCALAPPDATA;
+    if (!local) return null;
+    return join(local, "NestBrain", "cli", "nestbrain.bat");
+  }
+  return null;
+}
+
+/**
+ * Absolute path of the CLI wrapper shipped with the running app.
+ * In packaged mode: <App>/Contents/Resources/cli/nestbrain (macOS) or
+ * <install-dir>/resources/cli/nestbrain.bat (Windows). In dev we point at
+ * the source dir so install-on-PATH can be tested without packaging.
+ */
+function cliWrapperSource(): string {
+  const wrapperName = process.platform === "win32" ? "nestbrain.bat" : "nestbrain";
+  if (app.isPackaged) {
+    return join(process.resourcesPath, "cli", wrapperName);
+  }
+  return join(__dirname, "../../desktop/build/cli", wrapperName);
+}
+
+interface CliStatus {
+  supported: boolean;
+  target: string | null;
+  source: string;
+  installed: boolean;
+  /** True when target exists but points at the wrong place (e.g. app moved). */
+  stale: boolean;
+}
+
+async function getCliStatus(): Promise<CliStatus> {
+  const target = cliInstallTarget();
+  const source = cliWrapperSource();
+  if (!target) return { supported: false, target: null, source, installed: false, stale: false };
+
+  const { readlink, stat: statAsync } = await import("node:fs/promises");
+  if (!existsSync(target)) return { supported: true, target, source, installed: false, stale: false };
+
+  if (process.platform === "darwin") {
+    try {
+      const link = await readlink(target);
+      // Normalize: readlink may return a relative path; resolve against the
+      // link's directory.
+      const resolved = link.startsWith("/") ? link : resolve(join(target, ".."), link);
+      return { supported: true, target, source, installed: true, stale: resolved !== source };
+    } catch {
+      // Not a symlink (regular file or dir) — count as installed-but-stale
+      // because we don't know what it is.
+      return { supported: true, target, source, installed: true, stale: true };
+    }
+  }
+  // Windows: file or shortcut. We just check it exists; staleness check
+  // is best-effort via comparing wrapper contents.
+  try {
+    const stats = await statAsync(target);
+    return { supported: true, target, source, installed: stats.isFile(), stale: false };
+  } catch {
+    return { supported: true, target, source, installed: false, stale: false };
+  }
+}
+
+ipcMain.handle("nestbrain:cli:status", async () => getCliStatus());
+
+ipcMain.handle("nestbrain:cli:install", async () => {
+  const status = await getCliStatus();
+  if (!status.supported || !status.target) {
+    throw new Error("CLI install not supported on this platform.");
+  }
+  if (process.platform === "darwin") {
+    // Symlink in /usr/local/bin requires sudo. Use osascript to surface the
+    // native admin password prompt — matches the macOS UX users expect.
+    const escape = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    const cmd = `mkdir -p "$(dirname "${escape(status.target)}")" && ln -sf "${escape(status.source)}" "${escape(status.target)}"`;
+    const apple = `do shell script "${escape(cmd)}" with administrator privileges`;
+    await new Promise<void>((resolve, reject) => {
+      const proc = spawn("osascript", ["-e", apple]);
+      let stderr = "";
+      proc.stderr.on("data", (b: Buffer) => (stderr += b.toString()));
+      proc.on("close", (code: number) => {
+        if (code === 0) resolve();
+        else reject(new Error(stderr.trim() || `osascript exited with code ${code}`));
+      });
+      proc.on("error", reject);
+    });
+    return getCliStatus();
+  }
+  if (process.platform === "win32") {
+    // User-scoped install — copy the .bat into %LOCALAPPDATA%/NestBrain/cli
+    // and append that dir to the user PATH. No admin prompt.
+    const targetDir = dirname(status.target);
+    if (!existsSync(targetDir)) mkdirSync(targetDir, { recursive: true });
+    cpSync(status.source, status.target);
+    // Append to user PATH if missing.
+    try {
+      const userPath = execSync('powershell -NoProfile -Command "[Environment]::GetEnvironmentVariable(\'Path\',\'User\')"', { encoding: "utf-8" }).trim();
+      if (!userPath.split(";").map((s) => s.trim().toLowerCase()).includes(targetDir.toLowerCase())) {
+        const next = userPath ? `${userPath};${targetDir}` : targetDir;
+        execSync(`powershell -NoProfile -Command "[Environment]::SetEnvironmentVariable('Path','${next.replace(/'/g, "''")}','User')"`);
+      }
+    } catch (err) {
+      console.error("[cli:install] PATH update failed:", err);
+    }
+    return getCliStatus();
+  }
+  throw new Error("Unsupported platform");
+});
+
+ipcMain.handle("nestbrain:cli:uninstall", async () => {
+  const status = await getCliStatus();
+  if (!status.supported || !status.target || !status.installed) return getCliStatus();
+  if (process.platform === "darwin") {
+    const escape = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    const cmd = `rm -f "${escape(status.target)}"`;
+    const apple = `do shell script "${escape(cmd)}" with administrator privileges`;
+    await new Promise<void>((resolve, reject) => {
+      const proc = spawn("osascript", ["-e", apple]);
+      let stderr = "";
+      proc.stderr.on("data", (b: Buffer) => (stderr += b.toString()));
+      proc.on("close", (code: number) => (code === 0 ? resolve() : reject(new Error(stderr.trim() || `osascript exited ${code}`))));
+      proc.on("error", reject);
+    });
+    return getCliStatus();
+  }
+  if (process.platform === "win32") {
+    try { rmSync(status.target, { force: true }); } catch { /* ignore */ }
+    return getCliStatus();
+  }
+  throw new Error("Unsupported platform");
 });
 
 app.whenReady().then(async () => {

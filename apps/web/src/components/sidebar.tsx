@@ -10,6 +10,7 @@ import {
   Download,
   Network,
   Activity,
+  Lightbulb,
   Settings,
   Sun,
   Moon,
@@ -26,6 +27,7 @@ const navItems = [
   { href: "/search", icon: Search, label: "Search" },
   { href: "/ask", icon: MessageCircle, label: "Ask" },
   { href: "/ingest", icon: Download, label: "Ingest" },
+  { href: "/knowledge", icon: Lightbulb, label: "Knowledge" },
   { href: "/health", icon: Activity, label: "Health" },
   { href: "/settings", icon: Settings, label: "Settings" },
 ];
@@ -114,6 +116,35 @@ export function Sidebar() {
 
   const { theme, toggle } = useTheme();
 
+  // Poll knowledge counts so the sidebar shows two badges:
+  // - blue (accent): atoms awaiting review
+  // - green: accepted atoms waiting for the next compile
+  // Both hide when zero. The endpoint reads two small dirs + a JSON file, so
+  // a 10s cadence is cheap.
+  const [pendingCount, setPendingCount] = useState(0);
+  const [acceptedUncompiled, setAcceptedUncompiled] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    const fetchCounts = async () => {
+      try {
+        const res = await fetch("/api/knowledge/counts", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        setPendingCount(data.pending ?? 0);
+        setAcceptedUncompiled(data.acceptedUncompiled ?? 0);
+      } catch {
+        /* ignore — endpoint may not be wired yet */
+      }
+    };
+    void fetchCounts();
+    const id = setInterval(fetchCounts, 10_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
   return (
     <div className="relative shrink-0 flex" style={{ width }}>
       <aside className="w-full h-full border-r border-sidebar-border bg-sidebar flex flex-col overflow-hidden">
@@ -145,6 +176,7 @@ export function Sidebar() {
             const isActive =
               pathname === item.href || pathname.startsWith(item.href + "/");
             const Icon = item.icon;
+            const isKnowledge = item.href === "/knowledge";
             return (
               <Link
                 key={item.href}
@@ -156,7 +188,23 @@ export function Sidebar() {
                 }`}
               >
                 <Icon size={16} />
-                <span>{item.label}</span>
+                <span className="flex-1">{item.label}</span>
+                {isKnowledge && pendingCount > 0 && (
+                  <span
+                    className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-accent/15 text-accent"
+                    title={`${pendingCount} atom${pendingCount === 1 ? "" : "s"} awaiting review`}
+                  >
+                    {pendingCount}
+                  </span>
+                )}
+                {isKnowledge && acceptedUncompiled > 0 && (
+                  <span
+                    className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300"
+                    title={`${acceptedUncompiled} accepted atom${acceptedUncompiled === 1 ? "" : "s"} waiting for next compile`}
+                  >
+                    {acceptedUncompiled}
+                  </span>
+                )}
               </Link>
             );
           })}

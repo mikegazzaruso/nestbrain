@@ -35,7 +35,7 @@ To find the NestBrain root: starting from your current working directory, walk *
 
 - **Inside `Projects/<foo>/`**: act as a normal coding assistant. If that project has its own `CLAUDE.md`, **that file wins** over this one for project-specific rules. Use the integrated terminal for commands.
 - **In notes areas** (`Daily/`, `Business/`, `Context/`, `Skills/`, `Team/`): act as a writing/knowledge assistant. Use markdown with YAML frontmatter and `[[wikilinks]]` for cross-references (Obsidian-compatible).
-- **For knowledge queries**: prefer `nestbrain ask "..."` over reading wiki files directly — it uses hybrid semantic search and returns cited answers.
+- **For knowledge queries**: when the user phrases a question as a knowledge-base lookup ("cerca sulla mia knowledge …", "search my knowledge …", "what do I have on …", optionally with "progetto `<name>`"), open and follow `Skills/nestbrain-ask/SKILL.md`. Never call `nestbrain ask` directly — it spawns a nested Claude session; the skill uses `nestbrain search` and synthesizes the answer with the model already in this conversation.
 - **For adding knowledge**: `nestbrain ingest <source>`, then `nestbrain compile`. Never write into `Library/Knowledge/` by hand.
 
 ## NestBrain CLI
@@ -65,6 +65,35 @@ If the user has signed in to NestBrain with Google and enabled sync, this worksp
 - **Conflict files.** If you see a file like `notes.conflict-2026-05-26T15-30-12.md` next to `notes.md`, two devices edited the same file while disconnected. Don't auto-merge; surface it to the user and let them decide what to keep.
 - **Don't write inside `.nestbrain/sync-manifest.json`.** It's the sync engine's bookkeeping; NestBrain owns it.
 - **`Projects/` may or may not sync.** It's a per-device opt-in. Don't assume code projects move with the rest of the workspace.
+
+## Knowledge queries — the `nestbrain-ask` skill
+
+When the user asks something that should be answered from the knowledge base, open `Skills/nestbrain-ask/SKILL.md` and follow it. Triggers are **natural-language patterns**, not exact phrases:
+
+| User pattern                                                              | Scope                              |
+|---------------------------------------------------------------------------|------------------------------------|
+| "Cerca sulla mia knowledge …" / "Cerca nella mia knowledge …"             | All knowledge (no filter)          |
+| "Search my knowledge for …" / "What do I have on …"                       | All knowledge (no filter)          |
+| "Cerca sulla mia knowledge, **progetto `<name>`**, …"                     | Restricted to `<name>`             |
+| "Cerca per il progetto `<name>` …" / "From project `<name>`, …"           | Restricted to `<name>`             |
+
+**Scoping is restrictive**: when a project is named, search ONLY that project's articles (untagged generic articles are excluded). When no project is named, search everything.
+
+Proactive use is welcome: before starting non-trivial work in a Project, a quick knowledge query may surface an existing atom that solves it — saving you from reimplementing.
+
+## Promoting an insight — the `promote-knowledge` skill
+
+When the user explicitly asks you to remember something from the current conversation into the knowledge base, open `Skills/promote-knowledge/SKILL.md` and follow it. Triggers:
+
+| User pattern                                                      | Action                          |
+|-------------------------------------------------------------------|---------------------------------|
+| "promuovi questo" / "ricorda questo nella knowledge"              | Draft an atom for review        |
+| "salva nella knowledge" / "save this to knowledge"                | Draft an atom for review        |
+| "promote this" / "remember this in the KB"                        | Draft an atom for review        |
+
+The skill drafts the atom, **shows it to the user**, waits for confirm/edit, then writes it to the pending review queue (NOT directly to the wiki). The user accepts it later from NestBrain → Knowledge.
+
+Don't invoke proactively — only when the user explicitly asks. (Knowledge atoms tied to git commits land in pending automatically via the post-commit hook; this skill is for insights that aren't tied to a commit.)
 
 ## Sessions
 

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Search as SearchIcon, FileText } from "lucide-react";
+import { ProjectFilter } from "@/components/project-filter";
 
 interface SearchResult {
   articleId: string;
@@ -9,6 +10,7 @@ interface SearchResult {
   snippet: string;
   score: number;
   filePath: string;
+  projects?: string[];
 }
 
 export default function SearchPage() {
@@ -16,6 +18,17 @@ export default function SearchPage() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [project, setProject] = useState<string | null>(null);
+
+  // Mirror Ask page: persist the project pick across reloads.
+  useEffect(() => {
+    const saved = localStorage.getItem("nestbrain-search-project");
+    if (saved) setProject(saved);
+  }, []);
+  useEffect(() => {
+    if (project) localStorage.setItem("nestbrain-search-project", project);
+    else localStorage.removeItem("nestbrain-search-project");
+  }, [project]);
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -24,7 +37,9 @@ export default function SearchPage() {
     setSearching(true);
     setSearched(true);
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+      const params = new URLSearchParams({ q: query });
+      if (project) params.set("project", project);
+      const res = await fetch(`/api/search?${params}`);
       const data = await res.json();
       setResults(data.results ?? []);
     } catch {
@@ -36,7 +51,10 @@ export default function SearchPage() {
   return (
     <div className="flex-1 p-8">
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-2xl font-semibold tracking-tight mb-6">Search</h1>
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-semibold tracking-tight">Search</h1>
+          <ProjectFilter value={project} onChange={setProject} />
+        </div>
 
         <form onSubmit={handleSearch} className="mb-8">
           <div className="relative">
@@ -48,7 +66,7 @@ export default function SearchPage() {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search your knowledge base..."
+              placeholder={project ? `Search ${project}…` : "Search your knowledge base..."}
               className="w-full pl-12 pr-4 py-3 bg-card border border-border rounded-xl text-sm text-foreground placeholder:text-muted/50 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
               autoFocus
             />
@@ -76,8 +94,18 @@ export default function SearchPage() {
               >
                 <div className="flex items-start gap-3">
                   <FileText size={16} className="text-accent mt-0.5 shrink-0" />
-                  <div>
-                    <h3 className="text-sm font-medium mb-1">{result.title}</h3>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="text-sm font-medium truncate">{result.title}</h3>
+                      {result.projects?.map((p) => (
+                        <span
+                          key={p}
+                          className="text-[10px] px-1.5 py-0.5 rounded bg-accent/10 text-accent border border-accent/20 shrink-0"
+                        >
+                          {p}
+                        </span>
+                      ))}
+                    </div>
                     <p className="text-xs text-muted line-clamp-2">
                       {result.snippet}
                     </p>

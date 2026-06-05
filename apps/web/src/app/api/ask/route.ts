@@ -8,7 +8,7 @@ export const maxDuration = 300;
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { question, save } = body;
+    const { question, save, project } = body;
 
     if (!question) {
       return NextResponse.json({ error: "question is required" }, { status: 400 });
@@ -17,7 +17,13 @@ export async function POST(request: NextRequest) {
     const { wikiPath } = getDataPaths();
     const llm = await getLLM();
 
-    const result = await ask({ question, save, wikiPath, llm });
+    const result = await ask({
+      question,
+      save,
+      wikiPath,
+      llm,
+      project: typeof project === "string" && project ? project : undefined,
+    });
 
     return NextResponse.json(result);
   } catch (error) {

@@ -24,14 +24,114 @@ import {
   installHook,
   uninstallHook,
   getHookStatus,
+  slugify,
 } from "@nestbrain/core";
 import type { LLMProviderInterface } from "@nestbrain/core";
 import { readFile } from "node:fs/promises";
 
 const program = new Command();
 
-const DATA_RAW = resolve(process.cwd(), "data/raw");
-const DATA_WIKI = resolve(process.cwd(), "data/wiki");
+// Injected at bundle time by build/bundle.mjs via esbuild's `define`.
+// In a non-bundled `tsc`-built run we fall back to a sentinel so the
+// command still works in dev.
+declare const __NESTBRAIN_CLI_VERSION__: string;
+const CLI_VERSION = typeof __NESTBRAIN_CLI_VERSION__ !== "undefined" ? __NESTBRAIN_CLI_VERSION__ : "dev";
+
+/**
+ * Look up the NestBrain workspace path the Electron app persists in its
+ * bootstrap file. This is the canonical "where is my workspace" pointer
+ * for installed users — set once during onboarding and updated whenever
+ * the user moves their NestBrain folder via Settings.
+ *
+ * On macOS: ~/Library/Application Support/NestBrain/bootstrap.json
+ * On Windows: %APPDATA%/NestBrain/bootstrap.json
+ * On Linux: ~/.config/NestBrain/bootstrap.json
+ */
+function readElectronBootstrapWorkspace(): string | null {
+  const home = process.env.HOME || process.env.USERPROFILE;
+  if (!home) return null;
+  const candidates: string[] = [];
+  if (process.platform === "darwin") {
+    candidates.push(resolve(home, "Library/Application Support/NestBrain/bootstrap.json"));
+  } else if (process.platform === "win32") {
+    const appData = process.env.APPDATA;
+    if (appData) candidates.push(resolve(appData, "NestBrain/bootstrap.json"));
+  } else {
+    const xdg = process.env.XDG_CONFIG_HOME || resolve(home, ".config");
+    candidates.push(resolve(xdg, "NestBrain/bootstrap.json"));
+  }
+  for (const p of candidates) {
+    try {
+      if (!existsSync(p)) continue;
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const data = require(p) as { nestBrainPath?: string };
+      if (data.nestBrainPath && existsSync(resolve(data.nestBrainPath, ".nestbrain"))) {
+        return data.nestBrainPath;
+      }
+    } catch {
+      /* skip unreadable */
+    }
+  }
+  return null;
+}
+
+/**
+ * Walk up from `start` looking for a `.nestbrain/` directory. Returns the
+ * containing dir (the workspace root) or null.
+ */
+function findWorkspaceAbove(start: string): string | null {
+  let dir = start;
+  for (let i = 0; i < 20; i++) {
+    if (existsSync(resolve(dir, ".nestbrain"))) return dir;
+    const parent = resolve(dir, "..");
+    if (parent === dir) return null;
+    dir = parent;
+  }
+  return null;
+}
+
+/**
+ * Resolve the raw + wiki paths for the current invocation.
+ *
+ * Priority:
+ *   1. NESTBRAIN_DATA_DIR / NESTBRAIN_WIKI_DIR env vars (how the desktop
+ *      app spawns the embedded Next server).
+ *   2. Walk up from cwd looking for `.nestbrain/` — handy when running
+ *      inside a NestBrain workspace or one of its subprojects.
+ *   3. Electron app's bootstrap.json `nestBrainPath` — canonical pointer
+ *      for installed users invoking the CLI from anywhere on the system.
+ *   4. Repo-relative `./data/raw` and `./data/wiki` — the dev default.
+ */
+function resolveDataPaths(): { raw: string; wiki: string } {
+  const envDataDir = process.env.NESTBRAIN_DATA_DIR;
+  const envWikiDir = process.env.NESTBRAIN_WIKI_DIR;
+  if (envDataDir) {
+    return {
+      raw: resolve(envDataDir, "raw"),
+      wiki: envWikiDir ? resolve(envWikiDir) : resolve(envDataDir, "wiki"),
+    };
+  }
+  const walked = findWorkspaceAbove(process.cwd());
+  if (walked) {
+    return {
+      raw: resolve(walked, ".nestbrain", "raw"),
+      wiki: resolve(walked, "Library", "Knowledge"),
+    };
+  }
+  const fromBootstrap = readElectronBootstrapWorkspace();
+  if (fromBootstrap) {
+    return {
+      raw: resolve(fromBootstrap, ".nestbrain", "raw"),
+      wiki: resolve(fromBootstrap, "Library", "Knowledge"),
+    };
+  }
+  return {
+    raw: resolve(process.cwd(), "data/raw"),
+    wiki: resolve(process.cwd(), "data/wiki"),
+  };
+}
+
+const { raw: DATA_RAW, wiki: DATA_WIKI } = resolveDataPaths();
 
 function getLLM(): LLMProviderInterface {
   return createProvider({
@@ -45,7 +145,7 @@ function getLLM(): LLMProviderInterface {
 program
   .name("nestbrain")
   .description("LLM-powered personal knowledge base")
-  .version("0.2.0");
+  .version(CLI_VERSION);
 
 program
   .command("ingest <source>")
@@ -91,11 +191,18 @@ program
   .command("ask <question>")
   .description("Ask a question against the knowledge base")
   .option("-s, --save", "Save the answer back into the wiki")
+  .option("-p, --project <name>", "Scope retrieval to this project tag")
   .action(async (question, options) => {
     try {
       const llm = getLLM();
-      console.log(`Searching knowledge base...\n`);
-      const result = await ask({ question, save: options.save, wikiPath: DATA_WIKI, llm });
+      console.log(`Searching knowledge base${options.project ? ` (project: ${options.project})` : ""}...\n`);
+      const result = await ask({
+        question,
+        save: options.save,
+        wikiPath: DATA_WIKI,
+        llm,
+        project: options.project,
+      });
       console.log(result.answer);
       if (result.citations.length > 0) {
         console.log(`\nSources: ${result.citations.join(", ")}`);
@@ -113,9 +220,15 @@ program
   .command("search <query>")
   .description("Search the knowledge base")
   .option("-l, --limit <n>", "Max results", "10")
+  .option("-p, --project <name>", "Scope search to this project tag")
   .action(async (query, options) => {
     try {
-      const results = await search({ query, limit: parseInt(options.limit), wikiPath: DATA_WIKI });
+      const results = await search({
+        query,
+        limit: parseInt(options.limit),
+        wikiPath: DATA_WIKI,
+        project: options.project,
+      });
       if (results.length === 0) {
         console.log("No results found.");
         return;
@@ -183,15 +296,11 @@ const knowledge = program
 
 function resolveWorkspace(opt?: string): string {
   if (opt) return resolve(opt);
-  // Default: walk up from cwd looking for a .nestbrain dir.
-  let dir = process.cwd();
-  for (let i = 0; i < 20; i++) {
-    if (existsSync(resolve(dir, ".nestbrain"))) return dir;
-    const parent = resolve(dir, "..");
-    if (parent === dir) break;
-    dir = parent;
-  }
-  // No .nestbrain found — fall back to cwd; ensureQueueDirs will create it.
+  const walked = findWorkspaceAbove(process.cwd());
+  if (walked) return walked;
+  const fromBootstrap = readElectronBootstrapWorkspace();
+  if (fromBootstrap) return fromBootstrap;
+  // Last resort — ensureQueueDirs will populate `.nestbrain/` under cwd.
   return process.cwd();
 }
 
@@ -351,6 +460,69 @@ knowledge
         console.log("Run `nestbrain compile` to fold the accepted atoms into the wiki.");
       }
       void reload;
+    } catch (error) {
+      console.error(`✗ ${error instanceof Error ? error.message : error}`);
+      process.exit(1);
+    }
+  });
+
+knowledge
+  .command("promote")
+  .description(
+    "Add a manually-curated atom to the pending queue (reads JSON from stdin). " +
+      "Used by the promote-knowledge skill as the escape hatch for insights that " +
+      "aren't tied to a git commit.",
+  )
+  .option("-w, --workspace <path>", "NestBrain workspace path (default: auto-detect)")
+  .action(async (options) => {
+    try {
+      const workspace = resolveWorkspace(options.workspace);
+      const raw = await new Promise<string>((resolveStdin, rejectStdin) => {
+        let data = "";
+        process.stdin.setEncoding("utf-8");
+        process.stdin.on("data", (chunk) => {
+          data += chunk;
+        });
+        process.stdin.on("end", () => resolveStdin(data));
+        process.stdin.on("error", rejectStdin);
+      });
+      if (!raw.trim()) {
+        throw new Error(
+          "No input on stdin. Pipe a JSON object: {title, body, project, tags?, score?}",
+        );
+      }
+      const payload = JSON.parse(raw);
+      const title = String(payload.title ?? "").trim();
+      const body = String(payload.body ?? "").trim();
+      const project = String(payload.project ?? "").trim();
+      if (!title) throw new Error("`title` is required");
+      if (!body) throw new Error("`body` is required");
+      if (!project) throw new Error("`project` is required");
+
+      const id = slugify(title);
+      if (!id) throw new Error("Title produced an empty slug — pick a more specific title");
+      const today = new Date().toISOString().slice(0, 10);
+      const scoreRaw = Number(payload.score ?? 7);
+      const score = Number.isFinite(scoreRaw)
+        ? Math.max(0, Math.min(10, Math.round(scoreRaw)))
+        : 7;
+      const tags = Array.isArray(payload.tags)
+        ? payload.tags.map((t: unknown) => String(t).trim()).filter(Boolean)
+        : [];
+
+      const file = await writePendingAtom(workspace, {
+        id,
+        title,
+        project,
+        created: today,
+        score,
+        tags,
+        sourceRefs: [],
+        body,
+      });
+      console.log(`✓ ${title}`);
+      console.log(`  → ${file}`);
+      console.log(`  Open NestBrain → Knowledge to accept it.`);
     } catch (error) {
       console.error(`✗ ${error instanceof Error ? error.message : error}`);
       process.exit(1);

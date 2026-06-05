@@ -1,12 +1,13 @@
 {
   "name": "@nestbrain/cli",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
   "bin": {
-    "nestbrain": "./dist/index.js"
+    "nestbrain": "./dist/nestbrain.bundle.cjs"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && pnpm bundle",
+    "bundle": "node build/bundle.mjs",
     "dev": "tsc --watch",
     "lint": "eslint src/",
     "test": "vitest run"
@@ -15,5 +16,8 @@
     "@nestbrain/core": "workspace:*",
     "@nestbrain/shared": "workspace:*",
     "commander": "^13.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
   }
 }

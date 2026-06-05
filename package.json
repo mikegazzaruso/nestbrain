@@ -1,6 +1,6 @@
 {
   "name": "nestbrain",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
   "description": "LLM-powered personal knowledge base platform",
   "scripts": {
@@ -9,9 +9,10 @@
     "lint": "turbo lint",
     "test": "turbo test",
     "desktop:dev": "pnpm --filter @nestbrain/desktop dev",
-    "desktop:build": "pnpm --filter \"@nestbrain/web...\" --filter @nestbrain/sync build && pnpm desktop:copy-assets && pnpm desktop:prepare-standalone && pnpm --filter @nestbrain/desktop build",
+    "desktop:build": "pnpm --filter \"@nestbrain/web...\" --filter @nestbrain/sync --filter @nestbrain/cli build && pnpm desktop:copy-assets && pnpm desktop:prepare-standalone && pnpm desktop:prepare-cli && pnpm --filter @nestbrain/desktop build",
     "desktop:copy-assets": "node apps/desktop/build/copy-assets.mjs",
     "desktop:prepare-standalone": "node apps/desktop/build/prepare-standalone.mjs",
+    "desktop:prepare-cli": "node apps/desktop/build/prepare-cli-bundle.mjs",
     "desktop:package": "pnpm desktop:build && pnpm --filter @nestbrain/desktop package",
     "desktop:package:mac": "pnpm desktop:build && pnpm --filter @nestbrain/desktop package:mac",
     "desktop:package:win": "pnpm desktop:build && pnpm --filter @nestbrain/desktop package:win",

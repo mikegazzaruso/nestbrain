@@ -27,6 +27,79 @@ async function fileExists(path: string): Promise<boolean> {
   }
 }
 
+/**
+ * Walk a directory tree and return every `.md` file. Used by the compiler so
+ * it picks up both top-level ingested sources and project-scoped knowledge
+ * atoms under `raw/projects/<name>/`.
+ */
+async function collectMarkdownRecursive(dir: string): Promise<string[]> {
+  const out: string[] = [];
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const e of entries) {
+    const full = join(dir, e.name);
+    if (e.isDirectory()) {
+      out.push(...(await collectMarkdownRecursive(full)));
+    } else if (e.isFile() && e.name.endsWith(".md")) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+/**
+ * Pull the `project` value out of a Markdown file's YAML frontmatter.
+ * Looks for `project: <name>` only — projects-array form is treated below.
+ * Returns undefined if the file has no frontmatter or no project tag.
+ */
+function extractProject(content: string): string | undefined {
+  const fm = /^---\n([\s\S]*?)\n---/.exec(content);
+  if (!fm) return undefined;
+  const m = /^project:\s*(.+)$/m.exec(fm[1]);
+  if (!m) return undefined;
+  const v = m[1].trim().replace(/^["']|["']$/g, "");
+  return v || undefined;
+}
+
+/**
+ * Ensure the summary the LLM produced carries the source's `project` tag in
+ * its frontmatter. We don't trust the model to do this reliably — we either
+ * inject the field into existing frontmatter or wrap the text in one.
+ */
+function injectProjectIntoFrontmatter(text: string, project: string): string {
+  const fmMatch = /^---\n([\s\S]*?)\n---\n?/.exec(text);
+  if (fmMatch) {
+    const inner = fmMatch[1];
+    if (/^project:/m.test(inner)) {
+      // Replace existing.
+      const updatedInner = inner.replace(/^project:.*$/m, `project: ${project}`);
+      return text.replace(fmMatch[0], `---\n${updatedInner}\n---\n`);
+    }
+    return text.replace(fmMatch[0], `---\n${inner}\nproject: ${project}\n---\n`);
+  }
+  return `---\nproject: ${project}\n---\n\n${text}`;
+}
+
+/** Same as injectProjectIntoFrontmatter but for a multi-project list. */
+function injectProjectsIntoFrontmatter(text: string, projects: string[]): string {
+  if (projects.length === 0) return text;
+  const list = `[${projects.join(", ")}]`;
+  const fmMatch = /^---\n([\s\S]*?)\n---\n?/.exec(text);
+  if (fmMatch) {
+    const inner = fmMatch[1];
+    if (/^projects:/m.test(inner)) {
+      const updatedInner = inner.replace(/^projects:.*$/m, `projects: ${list}`);
+      return text.replace(fmMatch[0], `---\n${updatedInner}\n---\n`);
+    }
+    return text.replace(fmMatch[0], `---\n${inner}\nprojects: ${list}\n---\n`);
+  }
+  return `---\nprojects: ${list}\n---\n\n${text}`;
+}
+
 export async function compile(options: CompileOptions): Promise<CompileResult> {
   const rawPath = resolve(options.rawPath ?? "./data/raw");
   const wikiPath = resolve(options.wikiPath ?? "./data/wiki");
@@ -45,10 +118,9 @@ export async function compile(options: CompileOptions): Promise<CompileResult> {
     ? { sources: {} }
     : await loadTracker(wikiPath);
 
-  // Find raw source files
-  const rawFiles = (await readdir(rawPath))
-    .filter((f) => f.endsWith(".md"))
-    .map((f) => join(rawPath, f));
+  // Find raw source files — recursive so accepted knowledge atoms under
+  // raw/projects/<name>/ are picked up alongside top-level ingested sources.
+  const rawFiles = await collectMarkdownRecursive(rawPath);
 
   // Filter to only new/changed files
   const toProcess: string[] = [];
@@ -73,11 +145,16 @@ export async function compile(options: CompileOptions): Promise<CompileResult> {
 
   const progress = options.onProgress ?? (() => {});
 
+  // Track which source slug came from which project so concepts derived from
+  // those summaries inherit the union of contributing project tags.
+  const projectBySlug = new Map<string, string>();
+
   // Step 1: Summarize only new/changed sources
   for (let i = 0; i < toProcess.length; i++) {
     const file = toProcess[i];
     const content = await readFile(file, "utf-8");
     const sourceFileName = basename(file);
+    const project = extractProject(content);
 
     progress("Summarizing", `${sourceFileName} (${i + 1}/${toProcess.length})`);
 
@@ -95,14 +172,27 @@ export async function compile(options: CompileOptions): Promise<CompileResult> {
       articlesCreated++;
     }
 
-    await writeFile(summaryPath, response.text, "utf-8");
+    // Carry the source's project tag into the summary frontmatter so search
+    // / filter / citation rendering all see it without re-reading the source.
+    const summaryText = project
+      ? injectProjectIntoFrontmatter(response.text, project)
+      : response.text;
+    await writeFile(summaryPath, summaryText, "utf-8");
     await markCompiled(file, tracker);
+    if (project) projectBySlug.set(slug, project);
 
     // Embed into vector store
-    const titleMatch = response.text.match(/^#\s+(.+)$/m);
+    const titleMatch = summaryText.match(/^#\s+(.+)$/m);
     const title = titleMatch?.[1] ?? basename(file, ".md");
     progress("Embedding", `${title}`);
-    await vectorStore.upsert(slug, title, `${WIKI_DIRS.sources}/${slug}.md`, "source-summary", response.text);
+    await vectorStore.upsert(
+      slug,
+      title,
+      `${WIKI_DIRS.sources}/${slug}.md`,
+      "source-summary",
+      summaryText,
+      project ? [project] : undefined,
+    );
   }
 
   // Step 2: Extract concepts from NEW summaries only (not all 200)
@@ -184,11 +274,27 @@ export async function compile(options: CompileOptions): Promise<CompileResult> {
         articlesCreated++;
       }
 
-      await writeFile(conceptPath, conceptResponse.text, "utf-8");
+      // Union of project tags from the summaries that fed this concept batch.
+      // We don't try to attribute per-concept (the LLM extraction is a soup);
+      // every concept in this batch carries the union, which over-attributes
+      // somewhat but means project-scoped queries don't lose concepts.
+      const contributingProjects = [...new Set(projectBySlug.values())];
+
+      const conceptText = contributingProjects.length > 0
+        ? injectProjectsIntoFrontmatter(conceptResponse.text, contributingProjects)
+        : conceptResponse.text;
+      await writeFile(conceptPath, conceptText, "utf-8");
 
       // Embed into vector store
       progress("Embedding", `${concept.name}`);
-      await vectorStore.upsert(conceptSlug, concept.name, `${WIKI_DIRS.concepts}/${conceptSlug}.md`, "concept", conceptResponse.text);
+      await vectorStore.upsert(
+        conceptSlug,
+        concept.name,
+        `${WIKI_DIRS.concepts}/${conceptSlug}.md`,
+        "concept",
+        conceptText,
+        contributingProjects.length > 0 ? contributingProjects : undefined,
+      );
 
       // Add to existing list so next concept in this batch can link to it
       existingConcepts.push(concept.name);

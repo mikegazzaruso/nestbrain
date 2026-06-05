@@ -75,6 +75,8 @@ export interface SearchResult {
   snippet: string;
   score: number;
   filePath: string;
+  /** Projects this article is attributed to (when available). */
+  projects?: string[];
 }
 
 /** Q&A response */
