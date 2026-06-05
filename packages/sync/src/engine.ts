@@ -7,13 +7,14 @@ import { unlink, mkdir, rename, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { SYNC_DRIVE_FOLDER_NAME } from "@nestbrain/shared";
 import type { SyncPreferences, SyncProgress } from "@nestbrain/shared";
-import type { DriveAdapter, DriveFile } from "./drive-adapter";
+import { DriveError, type DriveAdapter, type DriveFile } from "./drive-adapter";
 import type { Manifest, WalkEntry } from "./types";
 import { buildExcludes } from "./excludes";
 import { walk } from "./walker";
 import { hashFile } from "./hash";
 
 const TRASH_PREFIX = ".trash";
+const FOLDER_MIME = "application/vnd.google-apps.folder";
 
 export interface EngineOptions {
   workspacePath: string;
@@ -130,14 +131,27 @@ export class SyncEngine {
   private async push(hintedPaths?: string[]): Promise<{ uploaded: number; skippedFiles: SkippedFile[] }> {
     const { workspacePath, prefs } = this.opts;
     const isExcluded = buildExcludes({ includeProjects: prefs.includeProjects });
+    const isHinted = !!(hintedPaths && hintedPaths.length > 0);
 
-    this.emit({ total: 0, done: 0, skipped: 0, currentFile: "Scanning workspace…" }, true);
+    // Only show "Scanning workspace…" for the full-walk case — a hinted push
+    // is O(hint size) and finishes in ms, the scan label would just flicker.
+    this.emit(
+      {
+        total: 0,
+        done: 0,
+        skipped: 0,
+        currentFile: isHinted
+          ? `Checking ${hintedPaths!.length} change${hintedPaths!.length === 1 ? "" : "s"}…`
+          : "Scanning workspace…",
+      },
+      true,
+    );
     const candidates: WalkEntry[] = [];
-    if (hintedPaths && hintedPaths.length > 0) {
+    if (isHinted) {
       // Watcher-targeted push: only the paths chokidar saw change. Each one
       // still goes through the mtime/size fast-path in pushOne, so unchanged
       // files cost ~one stat and zero hashes.
-      for (const relPath of hintedPaths) {
+      for (const relPath of hintedPaths!) {
         this.checkAborted();
         if (isExcluded(relPath)) continue;
         const absPath = join(workspacePath, relPath);
@@ -251,26 +265,141 @@ export class SyncEngine {
   // ===== PULL =====
 
   private async pull(): Promise<{ downloaded: number; conflicts: number; softDeletes: number }> {
-    const { manifest, drive, workspacePath } = this.opts;
+    const { manifest, drive } = this.opts;
+    if (!manifest.rootFolderDriveId) return { downloaded: 0, conflicts: 0, softDeletes: 0 };
 
-    // Walk Drive: build a map relPath → DriveFile, and populate folders cache.
+    // Fast path: we have a Drive page token from a previous pull. Ask Drive
+    // for the delta since then — when nothing changed remotely the request
+    // returns zero changes and we exit in milliseconds. This replaces the
+    // old "walk the entire Drive tree every 60s" behavior.
+    if (manifest.driveChangesPageToken) {
+      try {
+        return await this.pullIncremental(manifest.driveChangesPageToken);
+      } catch (err) {
+        // Tokens older than ~30 days are invalidated by Google; recover by
+        // falling through to the full walk, which re-seeds the token.
+        if (isInvalidPageTokenError(err)) {
+          console.warn("[sync] Drive page token expired, falling back to full walk");
+          manifest.driveChangesPageToken = undefined;
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    // Slow path: first sync (or recovery from expired token). Capture the
+    // current page token BEFORE the walk so any change that happens during
+    // the walk is visible to the next listChanges() call. Re-processing a
+    // few changes is fine — the md5/mtime fast-paths make it idempotent.
+    const tokenBeforeWalk = await drive.getStartPageToken();
+    const result = await this.pullFullWalk();
+    manifest.driveChangesPageToken = tokenBeforeWalk;
+    return result;
+  }
+
+  /** Incremental pull — process only the changes Drive reports. */
+  private async pullIncremental(
+    pageToken: string,
+  ): Promise<{ downloaded: number; conflicts: number; softDeletes: number }> {
+    const { manifest, drive } = this.opts;
+    this.checkAborted();
+
+    const { changes, newStartPageToken } = await drive.listChanges(pageToken);
+    manifest.driveChangesPageToken = newStartPageToken;
+    if (changes.length === 0) {
+      // Nothing remote changed since last pull — exit silently.
+      return { downloaded: 0, conflicts: 0, softDeletes: 0 };
+    }
+
+    // Build the driveId → relPath reverse index from known folders so we can
+    // map a change's parents to a workspace path without walking the tree.
+    const folderRelByDriveId = new Map<string, string>();
+    for (const [rel, id] of Object.entries(manifest.folders)) folderRelByDriveId.set(id, rel);
+    const driveIdToManifestRel = new Map<string, string>();
+    for (const [rel, entry] of Object.entries(manifest.files)) {
+      if (entry.driveId) driveIdToManifestRel.set(entry.driveId, rel);
+    }
+
+    let downloaded = 0;
+    let conflicts = 0;
+    let softDeletes = 0;
+    let processed = 0;
+
+    this.emit({ total: changes.length, done: 0, skipped: 0 }, true);
+
+    for (const change of changes) {
+      this.checkAborted();
+      processed += 1;
+
+      // Removed-or-trashed: treat as a soft-delete locally (mirror existing
+      // behavior — we move to .trash/ instead of hard-deleting).
+      const isGone = change.removed || change.file?.trashed === true;
+      if (isGone) {
+        const knownRel = driveIdToManifestRel.get(change.fileId);
+        if (!knownRel) continue; // file we never tracked; nothing to do
+        const softDeleted = await this.applySoftDeleteForRemote(knownRel);
+        if (softDeleted) softDeletes += 1;
+        continue;
+      }
+
+      const file = change.file;
+      if (!file) continue;
+
+      // Folder change: just update the folder cache. New folders created
+      // remotely get an entry; renames overwrite. (Old keys may go stale; the
+      // next full walk would clean them. We accept that — folder renames are
+      // rare and don't break the per-file sync.)
+      if (file.mimeType === FOLDER_MIME) {
+        const rel = await resolveDriveRelPath(file, folderRelByDriveId, manifest.rootFolderDriveId!, drive);
+        if (rel !== null) {
+          manifest.folders[rel] = file.id;
+          folderRelByDriveId.set(file.id, rel);
+        }
+        continue;
+      }
+
+      // File change: resolve its workspace path, then run it through the
+      // same per-file reconciliation as the full walk.
+      const rel = await resolveDriveRelPath(file, folderRelByDriveId, manifest.rootFolderDriveId!, drive);
+      if (rel === null) continue;
+
+      this.emit({
+        total: changes.length,
+        done: processed,
+        skipped: 0,
+        currentFile: `↓ ${rel}`,
+      });
+      const r = await this.reconcileRemoteFile(rel, file);
+      downloaded += r.downloaded;
+      conflicts += r.conflicts;
+    }
+
+    return { downloaded, conflicts, softDeletes };
+  }
+
+  /** Full Drive walk — used for first sync and as a recovery fallback. */
+  private async pullFullWalk(): Promise<{
+    downloaded: number;
+    conflicts: number;
+    softDeletes: number;
+  }> {
+    const { manifest, drive } = this.opts;
+
     const remoteFiles = new Map<string, DriveFile>();
     const folderCache = new Map<string, string>(Object.entries(manifest.folders));
-    if (!manifest.rootFolderDriveId) return { downloaded: 0, conflicts: 0, softDeletes: 0 };
-    for await (const { relPath, file } of drive.walkFiles(manifest.rootFolderDriveId, folderCache)) {
+    for await (const { relPath, file } of drive.walkFiles(manifest.rootFolderDriveId!, folderCache)) {
       remoteFiles.set(relPath, file);
       this.checkAborted();
     }
-    // Merge newly discovered folders into manifest.
     for (const [k, v] of folderCache) manifest.folders[k] = v;
 
     let downloaded = 0;
     let conflicts = 0;
     let softDeletes = 0;
 
-    // Phase 1: pull remote files that are new or changed.
     let i = 0;
     const remoteEntries = [...remoteFiles.entries()];
+    this.emit({ total: remoteEntries.length, done: 0, skipped: 0 }, true);
     for (const [relPath, remote] of remoteEntries) {
       this.checkAborted();
       i += 1;
@@ -280,111 +409,133 @@ export class SyncEngine {
         skipped: 0,
         currentFile: `↓ ${relPath}`,
       });
-
-      const localEntry = manifest.files[relPath];
-      const remoteMd5 = remote.md5Checksum ?? "";
-      const localAbsPath = join(workspacePath, relPath);
-      const localExists = await pathExists(localAbsPath);
-
-      // Case A: nothing locally → easy download.
-      if (!localExists) {
-        await drive.downloadFile(remote.id, localAbsPath);
-        const st = await stat(localAbsPath);
-        manifest.files[relPath] = {
-          md5: remoteMd5 || (await hashFile(localAbsPath)),
-          driveId: remote.id,
-          mtime: st.mtimeMs,
-          size: st.size,
-        };
-        downloaded += 1;
-        continue;
-      }
-
-      // Compute the local md5. Use the manifest's cached value if the file's
-      // mtime + size haven't drifted; otherwise rehash to be sure.
-      const localStat = await stat(localAbsPath);
-      let localMd5: string;
-      if (
-        localEntry?.md5 &&
-        localStat.mtimeMs === localEntry.mtime &&
-        localStat.size === localEntry.size
-      ) {
-        localMd5 = localEntry.md5;
-      } else {
-        localMd5 = await hashFile(localAbsPath);
-      }
-
-      // Case B: contents already match — just reconcile the manifest if stale.
-      if (localMd5 === remoteMd5) {
-        if (!localEntry || localEntry.md5 !== remoteMd5 || localEntry.driveId !== remote.id) {
-          manifest.files[relPath] = {
-            md5: remoteMd5,
-            driveId: remote.id,
-            mtime: localStat.mtimeMs,
-            size: localStat.size,
-          };
-        }
-        continue;
-      }
-
-      // Case C: local has not changed since last sync, only remote did → overwrite local.
-      if (localEntry?.md5 && localEntry.md5 === localMd5) {
-        await drive.downloadFile(remote.id, localAbsPath);
-        const st = await stat(localAbsPath);
-        manifest.files[relPath] = {
-          md5: remoteMd5,
-          driveId: remote.id,
-          mtime: st.mtimeMs,
-          size: st.size,
-        };
-        downloaded += 1;
-        continue;
-      }
-
-      // Case D: both sides have changed (or we have no record of last-synced state)
-      // → keep-both. Local stays as-is; remote arrives as a sibling .conflict file.
-      const conflictPath = makeConflictPath(localAbsPath);
-      await drive.downloadFile(remote.id, conflictPath);
-      conflicts += 1;
+      const r = await this.reconcileRemoteFile(relPath, remote);
+      downloaded += r.downloaded;
+      conflicts += r.conflicts;
     }
 
-    // Phase 2: detect Drive-side hard-deletes (file in manifest but not in Drive).
-    // Propagate as a soft-delete locally — move to .trash/ so the user has a
-    // recovery window. The "never delete on other devices without explicit
-    // action" guarantee is preserved: the file lives in .trash/ until purged.
+    // Detect Drive-side hard-deletes by diffing manifest vs the just-walked
+    // remote tree. (Incremental pulls don't need this — Drive tells us
+    // explicitly via `removed: true` / `trashed: true`.)
     for (const [relPath, entry] of Object.entries(manifest.files)) {
-      if (relPath.startsWith(TRASH_PREFIX + "/")) continue; // already in trash
+      if (relPath.startsWith(TRASH_PREFIX + "/")) continue;
       if (remoteFiles.has(relPath)) continue;
       if (!entry.driveId) continue;
-      // The file is in our manifest but no longer on Drive.
       this.checkAborted();
-      const localAbsPath = join(workspacePath, relPath);
-      if (!(await pathExists(localAbsPath))) {
-        // Already gone locally — just clean the manifest.
-        delete manifest.files[relPath];
-        continue;
-      }
-      const trashRel = `${TRASH_PREFIX}/${relPath}`;
-      const trashAbs = join(workspacePath, trashRel);
-      await mkdir(dirname(trashAbs), { recursive: true });
-      try {
-        await rename(localAbsPath, trashAbs);
-      } catch (err) {
-        console.error(`[sync] failed to move ${relPath} to local trash:`, err);
-        continue;
-      }
-      const st = await stat(trashAbs).catch(() => null);
-      manifest.files[trashRel] = {
-        md5: entry.md5,
-        driveId: "", // we'll re-sync if it gets re-uploaded
-        mtime: st?.mtimeMs ?? Date.now(),
-        size: st?.size ?? entry.size,
-      };
-      delete manifest.files[relPath];
-      softDeletes += 1;
+      const softDeleted = await this.applySoftDeleteForRemote(relPath);
+      if (softDeleted) softDeletes += 1;
     }
 
     return { downloaded, conflicts, softDeletes };
+  }
+
+  /**
+   * Reconcile a single remote file against the local copy. Used by both
+   * incremental and full-walk pull paths so the four-case logic
+   * (download / no-op / overwrite / conflict) lives in exactly one place.
+   */
+  private async reconcileRemoteFile(
+    relPath: string,
+    remote: DriveFile,
+  ): Promise<{ downloaded: number; conflicts: number }> {
+    const { manifest, drive, workspacePath } = this.opts;
+    const localEntry = manifest.files[relPath];
+    const remoteMd5 = remote.md5Checksum ?? "";
+    const localAbsPath = join(workspacePath, relPath);
+    const localExists = await pathExists(localAbsPath);
+
+    // Case A: nothing locally → easy download.
+    if (!localExists) {
+      await drive.downloadFile(remote.id, localAbsPath);
+      const st = await stat(localAbsPath);
+      manifest.files[relPath] = {
+        md5: remoteMd5 || (await hashFile(localAbsPath)),
+        driveId: remote.id,
+        mtime: st.mtimeMs,
+        size: st.size,
+      };
+      return { downloaded: 1, conflicts: 0 };
+    }
+
+    const localStat = await stat(localAbsPath);
+    let localMd5: string;
+    if (
+      localEntry?.md5 &&
+      localStat.mtimeMs === localEntry.mtime &&
+      localStat.size === localEntry.size
+    ) {
+      localMd5 = localEntry.md5;
+    } else {
+      localMd5 = await hashFile(localAbsPath);
+    }
+
+    // Case B: contents already match — just reconcile the manifest if stale.
+    if (localMd5 === remoteMd5) {
+      if (!localEntry || localEntry.md5 !== remoteMd5 || localEntry.driveId !== remote.id) {
+        manifest.files[relPath] = {
+          md5: remoteMd5,
+          driveId: remote.id,
+          mtime: localStat.mtimeMs,
+          size: localStat.size,
+        };
+      }
+      return { downloaded: 0, conflicts: 0 };
+    }
+
+    // Case C: local unchanged since last sync, only remote moved → overwrite local.
+    if (localEntry?.md5 && localEntry.md5 === localMd5) {
+      await drive.downloadFile(remote.id, localAbsPath);
+      const st = await stat(localAbsPath);
+      manifest.files[relPath] = {
+        md5: remoteMd5,
+        driveId: remote.id,
+        mtime: st.mtimeMs,
+        size: st.size,
+      };
+      return { downloaded: 1, conflicts: 0 };
+    }
+
+    // Case D: both sides drifted → keep-both. Local stays; remote lands as .conflict-<ts>.
+    const conflictPath = makeConflictPath(localAbsPath);
+    await drive.downloadFile(remote.id, conflictPath);
+    return { downloaded: 0, conflicts: 1 };
+  }
+
+  /**
+   * Move a tracked file into the local `.trash/` because it disappeared on
+   * Drive (either explicit `removed: true` from Changes API, or absent from
+   * a full walk). Returns true if we actually moved something — false when
+   * the file was already gone or already in `.trash/`.
+   */
+  private async applySoftDeleteForRemote(relPath: string): Promise<boolean> {
+    const { workspacePath, manifest } = this.opts;
+    if (relPath.startsWith(TRASH_PREFIX + "/")) return false;
+    const entry = manifest.files[relPath];
+    if (!entry) return false;
+
+    const localAbsPath = join(workspacePath, relPath);
+    if (!(await pathExists(localAbsPath))) {
+      delete manifest.files[relPath];
+      return false;
+    }
+    const trashRel = `${TRASH_PREFIX}/${relPath}`;
+    const trashAbs = join(workspacePath, trashRel);
+    await mkdir(dirname(trashAbs), { recursive: true });
+    try {
+      await rename(localAbsPath, trashAbs);
+    } catch (err) {
+      console.error(`[sync] failed to move ${relPath} to local trash:`, err);
+      return false;
+    }
+    const st = await stat(trashAbs).catch(() => null);
+    manifest.files[trashRel] = {
+      md5: entry.md5,
+      driveId: "",
+      mtime: st?.mtimeMs ?? Date.now(),
+      size: st?.size ?? entry.size,
+    };
+    delete manifest.files[relPath];
+    return true;
   }
 
   // ===== Soft / hard delete (called by SyncManager, not by cycle) =====
@@ -533,4 +684,54 @@ async function pathExists(p: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Resolve a Drive file/folder to its workspace-relative POSIX path by walking
+ * up the parents chain. Uses the supplied folder cache (driveId → relPath),
+ * filling it in as it discovers new folders so subsequent lookups are O(1).
+ * Returns null when the file lives outside our sync root (e.g. a parent we
+ * can't reach with our `drive.file` scope).
+ */
+async function resolveDriveRelPath(
+  node: DriveFile,
+  folderRelByDriveId: Map<string, string>,
+  rootDriveId: string,
+  drive: DriveAdapter,
+): Promise<string | null> {
+  if (node.id === rootDriveId) return "";
+  const parents = node.parents;
+  if (!parents || parents.length === 0) return null;
+  const parentId = parents[0];
+
+  let parentRel = folderRelByDriveId.get(parentId);
+  if (parentRel === undefined) {
+    if (parentId === rootDriveId) {
+      parentRel = "";
+      folderRelByDriveId.set(parentId, "");
+    } else {
+      try {
+        const parentMeta = await drive.getFileMeta(parentId);
+        const resolved = await resolveDriveRelPath(parentMeta, folderRelByDriveId, rootDriveId, drive);
+        if (resolved === null) return null;
+        parentRel = resolved;
+        folderRelByDriveId.set(parentId, parentRel);
+      } catch {
+        return null;
+      }
+    }
+  }
+  return parentRel === "" ? node.name : `${parentRel}/${node.name}`;
+}
+
+/**
+ * Drive returns 400 (`invalidPageToken`) or 410 (`gone`) when a page token is
+ * older than ~30 days or otherwise invalidated. We catch those and fall back
+ * to a full walk + fresh token; anything else propagates.
+ */
+function isInvalidPageTokenError(err: unknown): boolean {
+  if (!(err instanceof DriveError)) return false;
+  if (err.status === 410) return true;
+  if (err.status === 400 && /pageToken|invalid/i.test(err.body ?? "")) return true;
+  return false;
 }

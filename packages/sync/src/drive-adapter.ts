@@ -26,11 +26,27 @@ export interface DriveFile {
   md5Checksum?: string;
   modifiedTime?: string;
   size?: string;
+  trashed?: boolean;
 }
 
 export interface UploadResult {
   id: string;
   md5Checksum: string;
+}
+
+/** A single Drive change record (file added/modified/trashed/removed). */
+export interface DriveChange {
+  fileId: string;
+  /** True when the file was removed or moved out of the user's view. */
+  removed: boolean;
+  /** Current file metadata. Omitted when `removed` is true. */
+  file?: DriveFile;
+}
+
+export interface DriveChangesResult {
+  changes: DriveChange[];
+  /** Token to pass to the next listChanges() call. */
+  newStartPageToken: string;
 }
 
 export class DriveError extends Error {
@@ -182,6 +198,66 @@ export class DriveAdapter {
   /** Permanently remove a file from Drive (skips trash). */
   async deleteFile(driveId: string): Promise<void> {
     await this.fetchWithAuth(`${DRIVE_API}/files/${driveId}`, { method: "DELETE" });
+  }
+
+  /** Fetch the metadata for a single file or folder by id. */
+  async getFileMeta(driveId: string): Promise<DriveFile> {
+    const params = new URLSearchParams({
+      fields: "id,name,mimeType,parents,md5Checksum,modifiedTime,size,trashed",
+    });
+    const res = await this.fetchWithAuth(`${DRIVE_API}/files/${driveId}?${params}`);
+    return (await res.json()) as DriveFile;
+  }
+
+  /**
+   * Get a Drive change-log page token representing "right now". Call this
+   * BEFORE doing any initial work you want covered by future listChanges()
+   * calls — the token marks the cutoff, so anything that happens after this
+   * call (including during the same sync cycle) will be visible to the next
+   * pull. Once.
+   */
+  async getStartPageToken(): Promise<string> {
+    const res = await this.fetchWithAuth(
+      `${DRIVE_API}/changes/startPageToken?fields=startPageToken`,
+    );
+    const json = (await res.json()) as { startPageToken: string };
+    return json.startPageToken;
+  }
+
+  /**
+   * Drain every change since `initialPageToken`. Returns all change records
+   * and the `newStartPageToken` to persist for the next call.
+   *
+   * `restrictToMyDrive=true` so we don't get changes from shared drives.
+   * `includeRemoved=true` so we see hard-deletes from other devices.
+   * With our `drive.file` scope this naturally only returns files our app
+   * has touched — exactly what NestBrain syncs.
+   */
+  async listChanges(initialPageToken: string): Promise<DriveChangesResult> {
+    const allChanges: DriveChange[] = [];
+    let pageToken: string | undefined = initialPageToken;
+    let newStartPageToken = initialPageToken;
+    while (pageToken) {
+      const params = new URLSearchParams({
+        pageToken,
+        pageSize: "1000",
+        restrictToMyDrive: "true",
+        includeRemoved: "true",
+        spaces: "drive",
+        fields:
+          "nextPageToken,newStartPageToken,changes(fileId,removed,file(id,name,parents,mimeType,md5Checksum,modifiedTime,size,trashed))",
+      });
+      const res = await this.fetchWithAuth(`${DRIVE_API}/changes?${params}`);
+      const json = (await res.json()) as {
+        changes?: DriveChange[];
+        nextPageToken?: string;
+        newStartPageToken?: string;
+      };
+      if (json.changes) allChanges.push(...json.changes);
+      if (json.newStartPageToken) newStartPageToken = json.newStartPageToken;
+      pageToken = json.nextPageToken;
+    }
+    return { changes: allChanges, newStartPageToken };
   }
 
   /**

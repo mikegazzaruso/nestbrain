@@ -33,6 +33,14 @@ export interface Manifest {
   files: Record<string, ManifestFileEntry>;
   /** ms-epoch of last successful sync. */
   lastSyncAt?: number;
+  /**
+   * Drive change-log page token. Present after the first successful pull;
+   * used by listChanges() to return only what changed remotely since the
+   * previous sync. Absent → next pull does a full Drive walk and re-seeds
+   * the token. Tokens older than ~30 days are invalidated by Google and we
+   * fall back to a full walk on the next "invalid token" error.
+   */
+  driveChangesPageToken?: string;
 }
 
 export interface WalkEntry {
