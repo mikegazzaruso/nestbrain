@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronRight,
@@ -14,8 +14,13 @@ import {
   Trash2,
   ExternalLink,
   Cloud,
+  GitBranch,
+  ArrowRight,
 } from "lucide-react";
 import { useSync } from "@/lib/sync-context";
+import { FileIcon } from "./file-icon";
+import { useGitStatus, pickMarker, markerClass } from "@/lib/git-status-context";
+import { useTerminal } from "@/lib/terminal-context";
 
 interface FsEntry {
   name: string;
@@ -270,15 +275,23 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
 
   return (
     <div className="flex-shrink-0 border-b border-sidebar-border">
-      {/* Prominent New Project CTA */}
+      {/* New Project CTA — clean & neat (Linear / Vercel-ish) */}
       <div className="px-3 pt-3 pb-2">
         <button
           onClick={onNewProject}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-gradient-to-br from-accent to-purple-500 hover:from-accent-hover hover:to-purple-400 text-white text-[12px] font-semibold rounded-lg shadow-lg shadow-accent/25 hover:shadow-accent/40 transition-all hover:scale-[1.02] active:scale-[0.98]"
           title="Create a new project in NestBrain/Projects"
+          className="group w-full flex items-center justify-between gap-2 px-3 py-2 rounded-md text-[12px] text-foreground/85 bg-card hover:bg-card-hover border border-border hover:border-accent/40 transition-colors"
         >
-          <Plus size={14} className="shrink-0" strokeWidth={3} />
-          <span>New Project</span>
+          <span className="flex items-center gap-2 min-w-0">
+            <span className="flex items-center justify-center w-5 h-5 rounded-md bg-accent/10 text-accent group-hover:bg-accent/15 transition-colors">
+              <Plus size={12} strokeWidth={2.5} />
+            </span>
+            <span className="truncate">New project</span>
+          </span>
+          <ArrowRight
+            size={12}
+            className="shrink-0 text-muted/30 -translate-x-1 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 group-hover:text-accent/70 transition-all"
+          />
         </button>
       </div>
 
@@ -603,7 +616,7 @@ function RenameInput({
       {isDir ? (
         <Folder size={13} className="shrink-0 text-accent/70" />
       ) : (
-        <FileText size={13} className="shrink-0 text-muted/40" />
+        <FileIcon name={value || "file"} size={13} />
       )}
       <input
         ref={inputRef}
@@ -657,7 +670,7 @@ function CreateInput({
       </div>
       <div className="flex items-center gap-1.5">
         {kind === "file" ? (
-          <FileText size={12} className="shrink-0 text-muted/40" />
+          <FileIcon name={value || "file"} size={12} />
         ) : (
           <Folder size={12} className="shrink-0 text-muted/40" />
         )}
@@ -727,6 +740,56 @@ function TreeNode({
   const isRenaming = renamingPath === path;
   const [children, setChildren] = useState<FsEntry[] | null>(null);
 
+  // Git integration. For every folder rendered in the tree, we ask the
+  // main process "is this the top of a git repo?" once. If yes, we both
+  // register it in the shared status context (so the file rows under it
+  // get per-file markers) AND show a small GitBranch icon that opens a
+  // new terminal at the repo + lights up the branch indicator.
+  const { repos, registerRepo } = useGitStatus();
+  const { openTerminal } = useTerminal();
+  const [isRepoTop, setIsRepoTop] = useState(false);
+  useEffect(() => {
+    if (!isDir) return;
+    if (typeof window === "undefined" || !window.nestbrain?.git) return;
+    let cancelled = false;
+    void window.nestbrain.git.findRepo(path).then((res) => {
+      if (cancelled) return;
+      if (res && res.repoPath === path) {
+        setIsRepoTop(true);
+        registerRepo(path);
+      } else {
+        setIsRepoTop(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isDir, path, registerRepo]);
+
+  // Resolve the ancestor repo for marker computation. We pick the LONGEST
+  // matching prefix so nested checkouts (a sub-repo inside a project) win
+  // over the outer one.
+  const ancestor = useMemo(() => {
+    let best: { repoPath: string; relPath: string } | null = null;
+    for (const repoPath of Object.keys(repos)) {
+      if (!repos[repoPath]) continue;
+      if (path === repoPath || path.startsWith(repoPath + "/")) {
+        const rel = path === repoPath ? "" : path.slice(repoPath.length + 1);
+        if (!best || repoPath.length > best.repoPath.length) {
+          best = { repoPath, relPath: rel };
+        }
+      }
+    }
+    return best;
+  }, [path, repos]);
+
+  const marker = useMemo(() => {
+    if (!ancestor) return "";
+    const status = repos[ancestor.repoPath];
+    if (!status) return "";
+    return pickMarker(status.files[ancestor.relPath]);
+  }, [ancestor, repos]);
+
   useEffect(() => {
     if (!isDir || !isOpen) return;
     if (typeof window === "undefined" || !window.nestbrain) return;
@@ -757,10 +820,21 @@ function TreeNode({
   if (!isDir) {
     return (
       <button
-        onClick={() => onSelect(path, false)}
+        onClick={() => {
+          onSelect(path, false);
+          // Surface the ancestor repo to the status bar (debounced
+          // implicitly via React's batched updates — see status-bar.tsx).
+          if (ancestor) {
+            window.dispatchEvent(
+              new CustomEvent("nestbrain:focus-project", {
+                detail: { repoPath: ancestor.repoPath },
+              }),
+            );
+          }
+        }}
         onDoubleClick={() => onOpenFile(path)}
         onContextMenu={(e) => onContextMenu(e, path, name, false)}
-        className={`w-full text-left flex items-center gap-1 px-2 py-0.5 text-[12px] rounded transition-colors ${
+        className={`w-full text-left flex items-center gap-1.5 px-2 py-1 text-[13px] rounded transition-colors ${
           isSelected
             ? "bg-accent/15 text-foreground"
             : "text-muted/60 hover:text-foreground hover:bg-card"
@@ -769,42 +843,66 @@ function TreeNode({
         title="Double-click to open · Right-click for options"
       >
         <div className="w-[11px] shrink-0" />
-        <FileText size={13} className="shrink-0 text-muted/40" />
-        <span className="truncate">{name}</span>
+        <FileIcon name={name} size={14} />
+        <span className="truncate flex-1 text-left">{name}</span>
+        {marker && (
+          <span
+            className={`text-[10px] font-mono ${markerClass(marker)} shrink-0`}
+            title={`git: ${marker}`}
+          >
+            {marker}
+          </span>
+        )}
       </button>
     );
   }
 
   return (
     <div>
-      <button
-        onClick={() => {
-          onSelect(path, true);
-          onToggle(path);
-        }}
-        onContextMenu={(e) => onContextMenu(e, path, name, true)}
-        className={`w-full flex items-center gap-1 px-2 py-0.5 text-[12px] rounded transition-colors ${
+      <div
+        className={`group w-full flex items-center gap-1.5 px-2 py-1 text-[13px] rounded transition-colors ${
           isSelected
             ? "bg-accent/15 text-foreground"
             : "text-muted hover:text-foreground hover:bg-card"
         }`}
         style={{ paddingLeft: `${indent + 8}px` }}
       >
-        <ChevronRight
-          size={11}
-          className={`shrink-0 transition-transform ${
-            isOpen ? "rotate-90" : ""
-          } text-muted/50`}
-        />
-        {isOpen ? (
-          <FolderOpen size={13} className="shrink-0 text-accent/70" />
-        ) : (
-          <Folder size={13} className="shrink-0 text-muted/50" />
+        <button
+          onClick={() => {
+            onSelect(path, true);
+            onToggle(path);
+          }}
+          onContextMenu={(e) => onContextMenu(e, path, name, true)}
+          className="flex items-center gap-1.5 flex-1 min-w-0 text-left"
+        >
+          <ChevronRight
+            size={12}
+            className={`shrink-0 transition-transform ${
+              isOpen ? "rotate-90" : ""
+            } text-muted/50`}
+          />
+          {isOpen ? (
+            <FolderOpen size={14} className="shrink-0 text-accent/70" />
+          ) : (
+            <Folder size={14} className="shrink-0 text-muted/50" />
+          )}
+          <span className={`truncate ${isRoot ? "font-semibold" : ""} flex-1 text-left`}>
+            {name}
+          </span>
+        </button>
+        {isRepoTop && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              void openTerminal(path, name);
+            }}
+            className="shrink-0 p-0.5 text-accent/40 hover:text-accent transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+            title={`Open terminal here · focus branch indicator on ${name}`}
+          >
+            <GitBranch size={12} />
+          </button>
         )}
-        <span className={`truncate ${isRoot ? "font-semibold" : ""}`}>
-          {name}
-        </span>
-      </button>
+      </div>
       {isOpen && children && (
         <div>
           {children.map((entry) => (

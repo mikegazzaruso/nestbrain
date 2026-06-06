@@ -1,5 +1,11 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { AuthState, SyncPreferences, SyncState } from "@nestbrain/shared";
+
+interface GitOpResult {
+  ok: boolean;
+  stdout: string;
+  stderr: string;
+}
 
 // Mark HTML element so web UI can adjust for native chrome
 window.addEventListener("DOMContentLoaded", () => {
@@ -100,6 +106,65 @@ contextBridge.exposeInMainWorld("nestbrain", {
       ipcRenderer.on("nestbrain:sync:stateChanged", handler);
       return () => ipcRenderer.off("nestbrain:sync:stateChanged", handler);
     },
+  },
+
+  // Resolve a renderer-side File object to its absolute filesystem path.
+  // Used by drag-drop into the terminal — Electron 32+ removed File.path
+  // so we go through webUtils, which the preload can call but the
+  // sandboxed renderer can't.
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
+
+  // Git status — used by the file tree to render per-file markers and
+  // a branch chip next to project folders. Returns null when the path
+  // isn't a git repo top, so the caller can cheaply ask first.
+  git: {
+    status: (
+      repoPath: string,
+    ): Promise<{
+      branch: string;
+      ahead: number;
+      behind: number;
+      files: Record<string, { index: string; worktree: string }>;
+      hasUpstream: boolean;
+    } | null> => ipcRenderer.invoke("nestbrain:git:status", repoPath),
+    findRepo: (
+      anyPath: string,
+    ): Promise<{
+      repoPath: string;
+      status: {
+        branch: string;
+        ahead: number;
+        behind: number;
+        files: Record<string, { index: string; worktree: string }>;
+        hasUpstream: boolean;
+      };
+    } | null> => ipcRenderer.invoke("nestbrain:git:findRepo", anyPath),
+    stage: (repoPath: string, paths: string[]): Promise<GitOpResult> =>
+      ipcRenderer.invoke("nestbrain:git:stage", repoPath, paths),
+    unstage: (repoPath: string, paths: string[]): Promise<GitOpResult> =>
+      ipcRenderer.invoke("nestbrain:git:unstage", repoPath, paths),
+    discard: (repoPath: string, paths: string[]): Promise<GitOpResult> =>
+      ipcRenderer.invoke("nestbrain:git:discard", repoPath, paths),
+    commit: (repoPath: string, message: string): Promise<GitOpResult> =>
+      ipcRenderer.invoke("nestbrain:git:commit", repoPath, message),
+    push: (repoPath: string): Promise<GitOpResult> =>
+      ipcRenderer.invoke("nestbrain:git:push", repoPath),
+    pull: (repoPath: string): Promise<GitOpResult> =>
+      ipcRenderer.invoke("nestbrain:git:pull", repoPath),
+    stashList: (
+      repoPath: string,
+    ): Promise<GitOpResult & { stashes: { ref: string; message: string }[] }> =>
+      ipcRenderer.invoke("nestbrain:git:stashList", repoPath),
+    stashPush: (
+      repoPath: string,
+      message?: string,
+      includeUntracked?: boolean,
+    ): Promise<GitOpResult> =>
+      ipcRenderer.invoke("nestbrain:git:stashPush", repoPath, message, includeUntracked),
+    stashPop: (repoPath: string, ref?: string): Promise<GitOpResult> =>
+      ipcRenderer.invoke("nestbrain:git:stashPop", repoPath, ref),
+    stashDrop: (repoPath: string, ref: string): Promise<GitOpResult> =>
+      ipcRenderer.invoke("nestbrain:git:stashDrop", repoPath, ref),
   },
 
   // CLI on PATH (Install / Uninstall)

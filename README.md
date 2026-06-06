@@ -2,7 +2,7 @@
 
 **Your AI-powered second brain, packaged as a native workspace for people who actually build things.** Raw sources go in, a structured Markdown wiki comes out — compiled, linked, and maintained entirely by AI. Inside a full integrated workspace with a VS Code-style editor, a real terminal, and deep **Claude Code** integration that finally makes your LLM remember what you were doing yesterday.
 
-![NestBrain](https://img.shields.io/badge/status-v1.1.0-brightgreen) ![TypeScript](https://img.shields.io/badge/TypeScript-100%25-blue) ![License](https://img.shields.io/badge/license-GPL--3.0-blue) ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)
+![NestBrain](https://img.shields.io/badge/status-v1.5.0-brightgreen) ![TypeScript](https://img.shields.io/badge/TypeScript-100%25-blue) ![License](https://img.shields.io/badge/license-GPL--3.0-blue) ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)
 
 🌐 **Website**: [nestbrain.app](https://nestbrain.app)
 
@@ -51,10 +51,14 @@ Drop any source — a URL, a PDF, a GitHub repo, an arXiv paper, a YouTube video
 ![Wiki article view — "Privacy in AI" with concepts sidebar, related links, and linked references](docs/screenshots/wiki-article.png)
 
 ### 💻 A real workspace, not just a viewer
-- **VS Code-style file tree** with right-click rename/delete/new-file, auto-refreshed via native filesystem watchers (no manual refresh)
-- **Built-in code editor** (CodeMirror 6) with syntax highlighting for ~100 languages, `Cmd/Ctrl+S` to save, dirty indicators, and unsaved-changes protection on tab close
-- **Integrated terminal** — real PTY (xterm.js + node-pty), multi-session tabs, resizable bottom panel — a proper shell per project, right inside the app
-- **New Project** creates `NestBrain/Projects/<name>` and opens a terminal session cwd'd into it, ready for `claude` or whatever your toolchain is
+- **VS Code-style file tree** with right-click rename/delete/new-file, **typed file icons** (TS/Python/Dockerfile/Markdown/…), and auto-refresh via native filesystem watchers
+- **Multi-tab code editor** (CodeMirror 6) — open as many files as you want, scroll arrows when tabs overflow, syntax highlighting for ~100 languages, `Cmd/Ctrl+S` to save, dirty indicators, and unsaved-changes protection on tab close
+- **Integrated terminal with proper tabs** — real PTY (xterm.js + node-pty), open a new terminal with `+` next to existing tabs, **drag any file from the tree into a terminal** to insert its absolute path, resizable bottom panel
+- **One-click "open terminal here"** — every folder in the tree that's a git repo gets a small icon to spawn a new terminal in that directory and pin the branch indicator to it
+- **Clean New Project flow** — creates `NestBrain/Projects/<name>` and drops you straight into a terminal session ready for `claude` or your toolchain
+
+### 🌿 Source control built in
+Click the branch chip in the sidebar footer for a VS Code-style **Source Control** panel: stage / unstage / discard per file, write a commit message and commit (`⌘+Enter`), Push / Pull / Sync, and full stash management (push / pop / drop). File markers (`M` modified, `U` untracked, `A` added, `D` deleted, `R` renamed) appear next to filenames in the tree, refreshed automatically on every filesystem change. Push and Pull are only enabled when the branch has an upstream — no surprises.
 
 ### 🤝 The first app that actually remembers your work
 This is where NestBrain becomes something different. Every workspace ships with a **`CLAUDE.md`** and a **`Skills/`** directory copied automatically on first run, turning Claude Code into a session-aware coding partner that carries context across sessions, projects, and even machines.
@@ -81,6 +85,22 @@ When you're done for the day — or just done with this work block — say the t
 `.nest/STATE.md` is the magic. Next time you `cd` into that project on any machine (after a `git pull`) and say *"Buongiorno, Claude"* again, the skill reads the STATE file FIRST and immediately knows where to resume. Switch laptops, come back from vacation, hand work off to yourself a month later — the context is right there, written by the LLM for the LLM, in the project's git history.
 
 **This is what makes NestBrain worth paying for.** You're not buying a knowledge base app. You're buying a workspace where your AI assistant finally has continuity.
+
+### 📓 Project knowledge — your commits become wiki citizens
+The 1.4 feature drop: a NestBrain workspace turns your **active project work** into structured knowledge atoms that flow into the same wiki everything else lives in, with **explicit human review**.
+
+Run `nestbrain projects register` inside any project (or use the in-app helper) and a tiny `post-commit` git hook gets installed. On every commit, an LLM extractor reads the commit message + diff and proposes 0–N candidate **knowledge atoms** — short, reusable insights ("the kind of thing you'd want to remember 6 months from now on a different project"). Each gets a self-assessed reusability score 0–10.
+
+Atoms land in a **pending review queue** — never directly in the wiki. Open NestBrain → **Knowledge** to triage: Accept (folds into the next compile), Edit & Accept, or Reject (kept in case you change your mind). Accepted atoms carry the project tag so the **Ask / Search filter** in the UI lets you scope queries to one project's knowledge, or query across everything.
+
+#### Two skills make it natural to use from Claude Code
+
+Both skills live in the workspace's `Skills/` directory and are wired up via `CLAUDE.md` triggers — they activate by **natural language**, not slash commands.
+
+- **`nestbrain-ask`** — say *"cerca sulla mia knowledge come gestisco OAuth Desktop"* (or English: *"search my knowledge for OAuth Desktop"*). The skill runs `nestbrain search`, reads the cited articles, and answers with `[[wikilinks]]`. Add *"progetto `<name>`"* to scope to one project. **Never** triggers a nested Claude call — the model already in your session does the synthesis.
+- **`promote-knowledge`** — say *"ricorda questo nella knowledge"* / *"promote this"* mid-conversation. The skill drafts an atom (title + body + tags), shows it to you, waits for your OK or edits, then writes it to the pending queue. The escape hatch for insights that aren't tied to a commit.
+
+The combination — automatic capture on commits + manual promote escape hatch + reviewer UI — gives you a knowledge base that **grows from real project work** without becoming a chore.
 
 ### 📚 A proper knowledge base engine
 - **Hybrid search** — semantic (local embeddings via all-MiniLM-L6-v2) + keyword, normalized and weighted
@@ -241,17 +261,31 @@ Supports GPT-4o, GPT-4 Turbo, GPT-5, o1, o3, and o4 series. The provider automat
 
 ## CLI
 
-All the same commands work from the command line alongside the desktop app:
+All the same commands work from the command line alongside the desktop app. The CLI **ships with the packaged binaries** — open **Settings → Command line → Install on PATH** once (admin prompt on macOS, silent user-scope install on Windows) and `nestbrain` works in any terminal session. The Windows installer also adds it to PATH automatically.
 
 ```bash
-nestbrain ingest <source>       # Ingest any supported source
-nestbrain compile               # Compile wiki (incremental)
-nestbrain compile --force       # Recompile everything
-nestbrain ask "your question"   # Ask with citations
-nestbrain search "query"        # Hybrid search
-nestbrain lint                  # Run the health check
-nestbrain serve                 # Start the web UI
+# Knowledge base
+nestbrain ingest <source>             # Ingest any supported source
+nestbrain compile                     # Compile wiki (incremental)
+nestbrain compile --force             # Recompile everything
+nestbrain ask "your question"         # Ask with citations
+nestbrain ask -p <project> "..."      # Scope retrieval to one project's atoms
+nestbrain search "query"              # Hybrid search
+nestbrain search -p <project> "..."   # Scope to one project
+nestbrain lint                        # Run the health check
+nestbrain serve                       # Start the web UI
+
+# Project knowledge atoms
+nestbrain knowledge extract <sha>     # LLM-extract atoms from a commit → pending queue
+nestbrain knowledge list              # Show the pending queue
+nestbrain knowledge review            # Interactively accept / edit / reject pending atoms
+nestbrain knowledge promote           # Stdin JSON → pending atom (used by promote skill)
+nestbrain projects register           # Install the post-commit hook in this repo
+nestbrain projects unregister         # Remove the hook
+nestbrain projects status             # Show whether the hook is installed
 ```
+
+`nestbrain` auto-detects your NestBrain workspace via (in order) `NESTBRAIN_DATA_DIR`, walk-up from cwd looking for `.nestbrain/`, then the workspace path the desktop app persists in its bootstrap config — so the CLI just works from anywhere on the system once the app has been launched once.
 
 ---
 
@@ -274,9 +308,10 @@ Settings are managed through the **Settings** page in the app. App preferences a
 
 - LLM provider (Claude CLI / OpenAI) and model
 - OpenAI API key
-- Auto-compile toggle
+- Auto-compile toggle (runs `compile` after every accepted knowledge atom and every ingest)
 - Onboarding completion flag
 - NestBrain workspace location (relocatable from Settings)
+- **Install CLI on PATH** — one-click install for the bundled `nestbrain` command (`/usr/local/bin/nestbrain` on macOS via osascript-elevated symlink; `%LOCALAPPDATA%/NestBrain/cli/` + HKCU PATH on Windows). Re-install button surfaces automatically when the app is moved and the symlink goes stale.
 - Danger-zone wipe
 
 **Sync & account state** lives separately, per-device, in your OS user data directory (so it doesn't travel with the workspace itself):

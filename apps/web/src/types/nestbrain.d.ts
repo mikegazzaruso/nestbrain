@@ -8,6 +8,12 @@ interface FsEntry {
   isDirectory: boolean;
 }
 
+interface GitOpResult {
+  ok: boolean;
+  stdout: string;
+  stderr: string;
+}
+
 interface CreateTerminalResult {
   id: string;
   cwd: string;
@@ -31,6 +37,8 @@ declare global {
       onNestBrainMoved: (
         callback: (info: { nestBrainPath: string }) => void,
       ) => () => void;
+      /** Resolve a DOM File to its absolute filesystem path (drag-drop). */
+      getPathForFile: (file: File) => string;
       fs: {
         list: (dirPath: string) => Promise<FsEntry[]>;
         createDir: (dirPath: string) => Promise<{ ok: true; path: string }>;
@@ -74,6 +82,41 @@ declare global {
         kill: (id: string) => void;
         onData: (id: string, callback: (data: string) => void) => () => void;
         onExit: (id: string, callback: (code: number) => void) => () => void;
+      };
+      git: {
+        status: (repoPath: string) => Promise<{
+          branch: string;
+          ahead: number;
+          behind: number;
+          files: Record<string, { index: string; worktree: string }>;
+          hasUpstream: boolean;
+        } | null>;
+        findRepo: (anyPath: string) => Promise<{
+          repoPath: string;
+          status: {
+            branch: string;
+            ahead: number;
+            behind: number;
+            files: Record<string, { index: string; worktree: string }>;
+            hasUpstream: boolean;
+          };
+        } | null>;
+        stage: (repoPath: string, paths: string[]) => Promise<GitOpResult>;
+        unstage: (repoPath: string, paths: string[]) => Promise<GitOpResult>;
+        discard: (repoPath: string, paths: string[]) => Promise<GitOpResult>;
+        commit: (repoPath: string, message: string) => Promise<GitOpResult>;
+        push: (repoPath: string) => Promise<GitOpResult>;
+        pull: (repoPath: string) => Promise<GitOpResult>;
+        stashList: (
+          repoPath: string,
+        ) => Promise<GitOpResult & { stashes: { ref: string; message: string }[] }>;
+        stashPush: (
+          repoPath: string,
+          message?: string,
+          includeUntracked?: boolean,
+        ) => Promise<GitOpResult>;
+        stashPop: (repoPath: string, ref?: string) => Promise<GitOpResult>;
+        stashDrop: (repoPath: string, ref: string) => Promise<GitOpResult>;
       };
       cli: {
         status: () => Promise<{

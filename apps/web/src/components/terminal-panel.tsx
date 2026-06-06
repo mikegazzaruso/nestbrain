@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTerminal } from "@/lib/terminal-context";
 import { IntegratedTerminal } from "./integrated-terminal";
-import { X, Terminal as TerminalIcon, ChevronDown } from "lucide-react";
+import { X, Terminal as TerminalIcon, ChevronDown, Plus } from "lucide-react";
 
 const MIN_HEIGHT = 120;
 const MAX_HEIGHT = 600;
@@ -11,7 +11,7 @@ const DEFAULT_HEIGHT = 280;
 const STORAGE_KEY = "nestbrain-terminal-height";
 
 export function TerminalPanel() {
-  const { sessions, activeId, panelOpen, setActive, closeTerminal, togglePanel } =
+  const { sessions, activeId, panelOpen, setActive, closeTerminal, togglePanel, newTerminal } =
     useTerminal();
   const [height, setHeight] = useState(DEFAULT_HEIGHT);
   const dragging = useRef(false);
@@ -91,6 +91,13 @@ export function TerminalPanel() {
             </div>
           ))}
         </div>
+        <button
+          onClick={() => void newTerminal()}
+          className="p-2 text-muted/50 hover:text-foreground transition-colors"
+          title="New terminal (same cwd as active)"
+        >
+          <Plus size={14} />
+        </button>
         <button
           onClick={togglePanel}
           className="p-2 text-muted/50 hover:text-foreground transition-colors"

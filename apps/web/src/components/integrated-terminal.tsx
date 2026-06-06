@@ -129,11 +129,53 @@ export function IntegratedTerminal({
     }
   }, [active, visible, sessionId]);
 
+  // Drag-and-drop a file (or several) onto the terminal: inject the absolute
+  // path(s) into the PTY input stream, single-quoted when the path contains
+  // shell-significant characters. Mirrors the Xcode / iTerm gesture.
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (typeof window === "undefined" || !window.nestbrain) return;
+    const files = Array.from(e.dataTransfer?.files ?? []);
+    if (files.length === 0) return;
+    const paths: string[] = [];
+    for (const f of files) {
+      try {
+        const p = window.nestbrain.getPathForFile(f);
+        if (p) paths.push(quoteShellPath(p));
+      } catch {
+        /* ignore — file may have come from outside the sandbox */
+      }
+    }
+    if (paths.length === 0) return;
+    // Leading space so the path doesn't get concatenated onto whatever the
+    // user already typed without separation.
+    const text = (paths.length === 1 ? "" : "") + paths.join(" ") + " ";
+    window.nestbrain.terminal.write(sessionId, text);
+    termRef.current?.focus();
+  };
+
   return (
     <div
       ref={containerRef}
+      onDrop={handleDrop}
+      onDragOver={(e) => {
+        // Required to let the drop event fire; the default would block it.
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+      }}
       className={`absolute inset-0 ${active ? "block" : "hidden"}`}
       style={{ padding: "8px 0 0 8px" }}
     />
   );
+}
+
+/**
+ * Single-quote a path for POSIX-y shells when it contains any character
+ * that would otherwise need escaping. Embedded single quotes are handled
+ * via the `'\''` close-quote/escape/open-quote idiom that works in sh,
+ * bash, zsh, and fish.
+ */
+function quoteShellPath(p: string): string {
+  if (/^[A-Za-z0-9_./\-+@%]+$/.test(p)) return p;
+  return `'${p.replace(/'/g, `'\\''`)}'`;
 }

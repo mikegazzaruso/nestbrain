@@ -18,6 +18,7 @@ import {
 import { CompileIndicator } from "./compile-indicator";
 import { FileTree } from "./file-tree";
 import { NewProjectModal } from "./new-project-modal";
+import { BranchIndicator } from "./branch-indicator";
 import { useTheme } from "@/lib/theme-context";
 import { useTerminal } from "@/lib/terminal-context";
 
@@ -211,8 +212,11 @@ export function Sidebar() {
         </nav>
 
         {/* Footer */}
-        <div className="px-4 py-3 border-t border-sidebar-border flex items-center justify-between">
-          <p className="text-[10px] text-muted/30">NestBrain</p>
+        <div className="px-4 py-3 border-t border-sidebar-border flex items-center gap-2">
+          <p className="text-[10px] text-muted/30 shrink-0">NestBrain</p>
+          <div className="flex-1 min-w-0 flex justify-center">
+            <BranchIndicator />
+          </div>
           <ThemeToggle />
         </div>
       </aside>

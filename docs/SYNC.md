@@ -40,8 +40,8 @@ A single dedicated folder named **`NestBrain-Sync/`** in the root of your Google
 
 NestBrain has three trigger modes:
 
-1. **Push** — debounced filesystem watcher (chokidar). When you save a file in the workspace, the watcher waits ~3 s for further activity, then pushes the change set to Drive. Only files whose mtime/size *or* hash has changed are re-uploaded.
-2. **Pull** — runs every 60 s, also on "Sync now" and on enable. Walks the `NestBrain-Sync/` folder in Drive, downloads anything new or changed, and reconciles the manifest.
+1. **Push** — debounced filesystem watcher (chokidar). When you save a file in the workspace, the watcher waits ~3 s for further activity. The watcher accumulates the set of changed paths during the debounce window and hands them to the engine, which skips the workspace walk and inspects only those files. A periodic full-walk **reconciliation** still runs every 10 min as a safety net for events chokidar can miss (sleep / wake, network mount changes). Manifest writes are batched to once per cycle instead of once per file, so a large batch upload finishes in tens of MB written instead of hundreds.
+2. **Pull** — runs every 60 s, also on "Sync now" and on enable. **Drive Changes API based.** After the first sync NestBrain holds a Drive page token; every subsequent pull is a single `changes.list?pageToken=…` call. When nothing changed remotely the round trip is ≈400 ms regardless of how large the workspace has grown. A full Drive tree walk only runs on first sync and as a recovery path if the page token expires (~30-day TTL — Drive returns 400 / 410, NestBrain catches and re-seeds).
 3. **Full cycle (pull + push)** — triggered by the "Sync now" button and after sign-in. Pull runs first so any inbound changes can't be clobbered by an outbound push.
 
 ### Excluded by default

@@ -9,6 +9,8 @@ import { ThemeProvider } from "@/lib/theme-context";
 import { TerminalProvider } from "@/lib/terminal-context";
 import { AuthProvider } from "@/lib/auth-context";
 import { SyncProvider } from "@/lib/sync-context";
+import { GitStatusProvider } from "@/lib/git-status-context";
+import { EditorTabsProvider } from "@/lib/editor-tabs-context";
 import { OnboardingGate } from "@/lib/onboarding-gate";
 import "./globals.css";
 
@@ -44,17 +46,21 @@ export default function RootLayout({
            <SyncProvider>
             <CompileProvider>
               <TerminalProvider>
-                <OnboardingGate>
-                  <Sidebar />
-                  <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-                    <Topbar />
-                    <main className="flex-1 overflow-auto flex flex-col min-h-0">
-                      {children}
-                    </main>
-                    <TerminalPanel />
-                    <StatusBar />
-                  </div>
-                </OnboardingGate>
+                <GitStatusProvider>
+                 <EditorTabsProvider>
+                  <OnboardingGate>
+                    <Sidebar />
+                    <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+                      <Topbar />
+                      <main className="flex-1 overflow-auto flex flex-col min-h-0">
+                        {children}
+                      </main>
+                      <TerminalPanel />
+                      <StatusBar />
+                    </div>
+                  </OnboardingGate>
+                 </EditorTabsProvider>
+                </GitStatusProvider>
               </TerminalProvider>
             </CompileProvider>
            </SyncProvider>

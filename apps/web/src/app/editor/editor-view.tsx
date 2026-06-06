@@ -8,13 +8,16 @@ import { languages } from "@codemirror/language-data";
 import { LanguageSupport } from "@codemirror/language";
 import type { Extension } from "@codemirror/state";
 import {
-  FileText,
   Save,
   X,
   AlertTriangle,
   Circle,
   Check,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
+import { useEditorTabs } from "@/lib/editor-tabs-context";
+import { FileIcon } from "@/components/file-icon";
 
 type LoadState =
   | { kind: "loading" }
@@ -59,6 +62,7 @@ export function EditorView() {
   const router = useRouter();
   const params = useSearchParams();
   const filePath = params.get("path") ?? "";
+  const { tabs, activePath, openTab, closeTab } = useEditorTabs();
   const fileName = useMemo(
     () => filePath.split("/").pop() || filePath,
     [filePath],
@@ -86,6 +90,13 @@ export function EditorView() {
       cancelled = true;
     };
   }, [filePath]);
+
+  // Track this file in the multi-tab strip. openTab is idempotent — if the
+  // file is already a tab, it just becomes active. The URL is the source of
+  // truth for "what to load"; the context tracks "what's open".
+  useEffect(() => {
+    if (filePath) openTab(filePath);
+  }, [filePath, openTab]);
 
   const dirty = state.kind === "ready" && content !== originalContent;
   const dirtyRef = useRef(dirty);
@@ -197,44 +208,39 @@ export function EditorView() {
     return () => document.removeEventListener("click", onClickCapture, true);
   }, [dirty, fileName]);
 
-  const handleClose = useCallback(() => {
-    if (dirty) {
-      const ok = window.confirm(
-        `"${fileName}" has unsaved changes. Close without saving?`,
-      );
-      if (!ok) return;
-    }
-    router.push("/");
-  }, [dirty, fileName, router]);
+  const handleClose = useCallback(
+    (pathToClose: string = filePath, isDirty: boolean = dirty) => {
+      if (isDirty) {
+        const ok = window.confirm(
+          `"${pathToClose.split("/").pop()}" has unsaved changes. Close without saving?`,
+        );
+        if (!ok) return;
+      }
+      const next = closeTab(pathToClose);
+      if (next) {
+        router.push(`/editor?path=${encodeURIComponent(next)}`);
+      } else {
+        router.push("/");
+      }
+    },
+    [dirty, filePath, closeTab, router],
+  );
 
   const extensions = useMemo(() => langExt, [langExt]);
 
   return (
     <div className="flex-1 flex flex-col h-full bg-background">
-      {/* Tab bar */}
-      <div className="flex items-center border-b border-border bg-sidebar">
-        <div className="flex items-center gap-2 px-4 py-2 border-r border-border bg-background min-w-0">
-          <FileText size={13} className="shrink-0 text-muted/50" />
-          <span className="text-[12px] text-foreground truncate" title={filePath}>
-            {fileName}
-          </span>
-          {dirty && (
-            <span title="Unsaved changes" className="flex shrink-0">
-              <Circle size={8} className="text-accent fill-accent" />
-            </span>
-          )}
-          <button
-            onClick={handleClose}
-            className="ml-2 text-muted/40 hover:text-foreground transition-colors"
-            title={dirty ? "Close (unsaved changes)" : "Close"}
-          >
-            <X size={13} />
-          </button>
-        </div>
+      {/* Multi-tab strip + right-aligned save controls */}
+      <div className="flex items-center border-b border-border bg-sidebar shrink-0">
+        <TabsStrip
+          tabs={tabs}
+          activePath={activePath}
+          currentDirty={dirty}
+          onActivate={(p) => router.push(`/editor?path=${encodeURIComponent(p)}`)}
+          onClose={(p) => handleClose(p, p === filePath ? dirty : false)}
+        />
 
-        <div className="flex-1" />
-
-        <div className="flex items-center gap-3 px-4">
+        <div className="flex items-center gap-3 px-4 shrink-0">
           {error && (
             <span className="flex items-center gap-1.5 text-[11px] text-red-400">
               <AlertTriangle size={11} />
@@ -259,7 +265,8 @@ export function EditorView() {
         </div>
       </div>
 
-      {/* Editor area */}
+      {/* Editor area — keep all open files in the tab strip above; the active
+          path drives the editor content via the URL */}
       <div className="flex-1 min-h-0 overflow-hidden">
         {state.kind === "loading" && (
           <div className="h-full flex items-center justify-center text-muted/50 text-sm">
@@ -309,4 +316,133 @@ export function EditorView() {
       </div>
     </div>
   );
+}
+
+/**
+ * Horizontal scrollable tab strip with overflow chevrons (VSCode style).
+ * The strip itself is `overflow-x-auto` so the user can scroll-wheel
+ * sideways; the chevrons are just shortcuts. They appear only when the
+ * strip is wider than its container.
+ */
+function TabsStrip({
+  tabs,
+  activePath,
+  currentDirty,
+  onActivate,
+  onClose,
+}: {
+  tabs: string[];
+  activePath: string | null;
+  currentDirty: boolean;
+  onActivate: (path: string) => void;
+  onClose: (path: string) => void;
+}) {
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [overflow, setOverflow] = useState(false);
+
+  // Recompute overflow on tab-count change + on container resize.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const check = () => setOverflow(el.scrollWidth > el.clientWidth + 1);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [tabs.length]);
+
+  // Auto-scroll the active tab into view when the active path changes.
+  useEffect(() => {
+    if (!activePath || !scrollerRef.current) return;
+    const node = scrollerRef.current.querySelector<HTMLElement>(
+      `[data-tab-path="${cssEscape(activePath)}"]`,
+    );
+    node?.scrollIntoView({ behavior: "smooth", inline: "nearest", block: "nearest" });
+  }, [activePath]);
+
+  const scrollBy = (delta: number) => {
+    scrollerRef.current?.scrollBy({ left: delta, behavior: "smooth" });
+  };
+
+  return (
+    <div className="flex items-center min-w-0 flex-1">
+      {overflow && (
+        <button
+          onClick={() => scrollBy(-200)}
+          className="px-1 py-2 text-muted/50 hover:text-foreground transition-colors shrink-0"
+          title="Scroll tabs left"
+        >
+          <ChevronLeft size={14} />
+        </button>
+      )}
+      <div
+        ref={scrollerRef}
+        className="flex items-stretch flex-1 min-w-0 overflow-x-auto scrollbar-none"
+        style={{ scrollbarWidth: "none" }}
+      >
+        {tabs.map((path) => {
+          const isActive = path === activePath;
+          const name = path.split("/").pop() || path;
+          const showDirty = isActive && currentDirty;
+          return (
+            <div
+              key={path}
+              data-tab-path={path}
+              onClick={() => !isActive && onActivate(path)}
+              className={`group flex items-center gap-2 px-3 py-2 border-r border-border cursor-pointer text-[12px] transition-colors shrink-0 max-w-[220px] ${
+                isActive
+                  ? "bg-background text-foreground"
+                  : "text-muted/70 hover:text-foreground hover:bg-card"
+              }`}
+              title={path}
+            >
+              <FileIcon name={name} size={13} />
+              <span className="truncate">{name}</span>
+              {showDirty ? (
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClose(path);
+                  }}
+                  className="ml-1 shrink-0"
+                  title="Unsaved — click to close"
+                >
+                  <Circle size={8} className="text-accent fill-accent group-hover:hidden" />
+                  <X
+                    size={13}
+                    className="text-muted/50 hover:text-foreground hidden group-hover:inline"
+                  />
+                </span>
+              ) : (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClose(path);
+                  }}
+                  className="ml-1 shrink-0 text-muted/30 group-hover:text-muted/60 hover:text-foreground transition-colors"
+                  title="Close"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {overflow && (
+        <button
+          onClick={() => scrollBy(200)}
+          className="px-1 py-2 text-muted/50 hover:text-foreground transition-colors shrink-0"
+          title="Scroll tabs right"
+        >
+          <ChevronRight size={14} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Minimal CSS.escape polyfill for attribute selectors. */
+function cssEscape(s: string): string {
+  return s.replace(/(["\\#.[\]:>~+*=^$()|/?{}@!,;'`%& \t\n])/g, "\\$1");
 }

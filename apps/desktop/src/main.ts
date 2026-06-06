@@ -34,7 +34,7 @@ try {
 } catch (err) {
   console.error("[pty] native binding failed to load:", err);
 }
-import { execSync, spawn } from "node:child_process";
+import { execFileSync, execSync, spawn } from "node:child_process";
 import { AuthManager } from "./auth";
 import { SyncManager } from "./sync";
 
@@ -1049,6 +1049,262 @@ ipcMain.handle("nestbrain:sync:hardDelete", async (_e, relPath: string) => {
   if (typeof relPath !== "string" || relPath === "") throw new Error("Invalid path");
   await syncManager.hardDelete(relPath);
 });
+
+// ====== Git status for the file tree ======
+
+/**
+ * Get the current branch + per-file status for a git repo. Returns null
+ * when `repoPath` is not the top of a git working tree (so the file-tree
+ * caller can cheaply ask "is this dir a repo?" and skip rendering markers
+ * when it isn't). Status codes follow `git status --porcelain` (X column
+ * = index, Y column = worktree). The map keys are paths RELATIVE to the
+ * repo top, with POSIX separators, matching what `--porcelain` emits.
+ */
+ipcMain.handle("nestbrain:git:status", async (_e, repoPath: string) => {
+  if (typeof repoPath !== "string" || !repoPath) return null;
+  return readGitStatus(repoPath);
+});
+
+/**
+ * Walk up from any path looking for a git toplevel; if found, return the
+ * repo path + full status. Used by the sidebar branch indicator so the
+ * chip works for ANY focus path (editor file, terminal cwd) without
+ * depending on the file tree having pre-registered the repo.
+ */
+ipcMain.handle("nestbrain:git:findRepo", async (_e, anyPath: string) => {
+  if (typeof anyPath !== "string" || !anyPath) return null;
+  let top = "";
+  try {
+    top = execFileSync("git", ["-C", anyPath, "rev-parse", "--show-toplevel"], {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 1500,
+    }).trim();
+  } catch {
+    return null;
+  }
+  if (!top) return null;
+  const status = readGitStatus(top);
+  return status ? { repoPath: top, status } : null;
+});
+
+/**
+ * Run an arbitrary git subcommand inside `repoPath`. Used by the source
+ * control panel for stage / unstage / discard / commit / push / pull /
+ * stash. We never pipe untrusted input as a flag — every call site below
+ * lists its own arg array, so a malicious "filename" can't impersonate a
+ * `--upload-pack` etc.
+ *
+ * The wrapper:
+ *   • caps stdout/stderr at 5 MB (operations like `git status` on huge
+ *     repos can otherwise lock up the renderer waiting for IPC)
+ *   • sets a 30 s timeout (push/pull can be slow on bad networks)
+ *   • returns { ok, stdout, stderr } so the UI can show inline errors
+ *     rather than crashing on a thrown promise.
+ */
+interface GitRunResult {
+  ok: boolean;
+  stdout: string;
+  stderr: string;
+}
+
+function runGit(repoPath: string, args: string[], timeoutMs = 30_000): GitRunResult {
+  try {
+    const out = execFileSync("git", ["-C", repoPath, ...args], {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "pipe"],
+      maxBuffer: 5 * 1024 * 1024,
+      timeout: timeoutMs,
+    });
+    return { ok: true, stdout: out, stderr: "" };
+  } catch (err) {
+    const e = err as { stdout?: Buffer | string; stderr?: Buffer | string; message?: string };
+    return {
+      ok: false,
+      stdout: typeof e.stdout === "string" ? e.stdout : e.stdout?.toString() ?? "",
+      stderr:
+        (typeof e.stderr === "string" ? e.stderr : e.stderr?.toString() ?? "") ||
+        e.message ||
+        "git command failed",
+    };
+  }
+}
+
+function assertRepo(repoPath: unknown): asserts repoPath is string {
+  if (typeof repoPath !== "string" || !repoPath) {
+    throw new Error("repoPath required");
+  }
+}
+
+function assertPaths(paths: unknown): asserts paths is string[] {
+  if (!Array.isArray(paths) || paths.some((p) => typeof p !== "string" || !p)) {
+    throw new Error("paths must be a non-empty string array");
+  }
+}
+
+ipcMain.handle("nestbrain:git:stage", async (_e, repoPath: string, paths: string[]) => {
+  assertRepo(repoPath); assertPaths(paths);
+  return runGit(repoPath, ["add", "--", ...paths], 10_000);
+});
+
+ipcMain.handle("nestbrain:git:unstage", async (_e, repoPath: string, paths: string[]) => {
+  assertRepo(repoPath); assertPaths(paths);
+  return runGit(repoPath, ["restore", "--staged", "--", ...paths], 10_000);
+});
+
+ipcMain.handle("nestbrain:git:discard", async (_e, repoPath: string, paths: string[]) => {
+  assertRepo(repoPath); assertPaths(paths);
+  // For tracked-but-modified files: `git restore`. For untracked files
+  // (which `restore` can't touch), `git clean -f --` removes them. We run
+  // both unconditionally; the one that doesn't apply is a silent no-op.
+  const r1 = runGit(repoPath, ["restore", "--worktree", "--", ...paths], 10_000);
+  const r2 = runGit(repoPath, ["clean", "-fd", "--", ...paths], 10_000);
+  return {
+    ok: r1.ok && r2.ok,
+    stdout: `${r1.stdout}${r2.stdout}`,
+    stderr: `${r1.stderr}${r2.stderr}`,
+  };
+});
+
+ipcMain.handle("nestbrain:git:commit", async (_e, repoPath: string, message: string) => {
+  assertRepo(repoPath);
+  if (typeof message !== "string" || !message.trim()) {
+    throw new Error("commit message required");
+  }
+  return runGit(repoPath, ["commit", "-m", message], 15_000);
+});
+
+ipcMain.handle("nestbrain:git:push", async (_e, repoPath: string) => {
+  assertRepo(repoPath);
+  return runGit(repoPath, ["push"], 60_000);
+});
+
+ipcMain.handle("nestbrain:git:pull", async (_e, repoPath: string) => {
+  assertRepo(repoPath);
+  return runGit(repoPath, ["pull", "--ff-only"], 60_000);
+});
+
+interface StashEntry {
+  ref: string;
+  message: string;
+}
+
+ipcMain.handle("nestbrain:git:stashList", async (_e, repoPath: string) => {
+  assertRepo(repoPath);
+  const r = runGit(repoPath, ["stash", "list", "--format=%gd%x09%gs"], 5_000);
+  if (!r.ok) return { ok: false, stdout: r.stdout, stderr: r.stderr, stashes: [] as StashEntry[] };
+  const stashes: StashEntry[] = [];
+  for (const line of r.stdout.split("\n")) {
+    if (!line.trim()) continue;
+    const [ref, ...rest] = line.split("\t");
+    stashes.push({ ref, message: rest.join("\t") });
+  }
+  return { ok: true, stdout: r.stdout, stderr: "", stashes };
+});
+
+ipcMain.handle(
+  "nestbrain:git:stashPush",
+  async (_e, repoPath: string, message?: string, includeUntracked?: boolean) => {
+    assertRepo(repoPath);
+    const args = ["stash", "push"];
+    if (includeUntracked) args.push("-u");
+    if (message && message.trim()) args.push("-m", message.trim());
+    return runGit(repoPath, args, 15_000);
+  },
+);
+
+ipcMain.handle("nestbrain:git:stashPop", async (_e, repoPath: string, ref?: string) => {
+  assertRepo(repoPath);
+  const args = ["stash", "pop"];
+  if (ref && typeof ref === "string") args.push(ref);
+  return runGit(repoPath, args, 15_000);
+});
+
+ipcMain.handle("nestbrain:git:stashDrop", async (_e, repoPath: string, ref: string) => {
+  assertRepo(repoPath);
+  if (typeof ref !== "string" || !ref) throw new Error("stash ref required");
+  return runGit(repoPath, ["stash", "drop", ref], 5_000);
+});
+
+interface GitFileStatus {
+  index: string; // 1 char, e.g. "M", " ", "?", "A", "D", "R"
+  worktree: string;
+}
+
+interface GitRepoStatus {
+  branch: string;
+  ahead: number;
+  behind: number;
+  /** True when the branch tracks a remote (push/pull are meaningful). */
+  hasUpstream: boolean;
+  files: Record<string, GitFileStatus>;
+}
+
+function readGitStatus(repoPath: string): GitRepoStatus | null {
+  // Quick "is this a repo?" check — avoids running git on every Projects/<name>/
+  // dir, most of which aren't git repos.
+  try {
+    const top = execFileSync("git", ["-C", repoPath, "rev-parse", "--show-toplevel"], {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 1000,
+    }).trim();
+    // Only treat repoPath as a repo if it IS the top — otherwise we'd
+    // attribute child-project status to the parent.
+    if (resolve(top) !== resolve(repoPath)) return null;
+  } catch {
+    return null;
+  }
+
+  let branch = "";
+  let ahead = 0;
+  let behind = 0;
+  let hasUpstream = false;
+  const files: Record<string, GitFileStatus> = {};
+
+  try {
+    // -b puts a "## branch...origin/branch [ahead N, behind M]" header on the
+    // first line. -z null-terminates entries so filenames with spaces or
+    // newlines round-trip cleanly.
+    const out = execFileSync(
+      "git",
+      ["-C", repoPath, "status", "--porcelain=v1", "-b", "-z", "--untracked-files=all"],
+      { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"], timeout: 3000 },
+    );
+    const parts = out.split("\0");
+    if (parts.length > 0 && parts[0].startsWith("## ")) {
+      const header = parts.shift()!.slice(3);
+      // The "...origin/foo" segment is present iff the branch has an upstream
+      // configured; that's the cheap way to know whether push/pull are even
+      // meaningful (vs the branch being local-only with no remote tracking).
+      const m = /^([^.\s]+)(?:\.\.\.(\S+))?(?:\s+\[(.+)\])?/.exec(header);
+      if (m) {
+        branch = m[1] === "HEAD" ? "(detached)" : m[1];
+        hasUpstream = !!m[2];
+        const trailer = m[3] ?? "";
+        const a = /ahead (\d+)/.exec(trailer);
+        const b = /behind (\d+)/.exec(trailer);
+        if (a) ahead = Number(a[1]);
+        if (b) behind = Number(b[1]);
+      }
+    }
+    for (let i = 0; i < parts.length; i++) {
+      const entry = parts[i];
+      if (!entry) continue;
+      // Each entry is "XY path". Rename entries also push the rename source
+      // as the next null-separated chunk — we just skip it.
+      const code = entry.slice(0, 2);
+      const path = entry.slice(3);
+      if (code[0] === "R" || code[0] === "C") i += 1; // skip the rename src
+      if (!path) continue;
+      files[path] = { index: code[0], worktree: code[1] };
+    }
+  } catch {
+    /* repo present but command failed — return what we have */
+  }
+
+  return { branch, ahead, behind, hasUpstream, files };
+}
 
 // ====== CLI on PATH (macOS / Windows) ======
 
