@@ -56,6 +56,10 @@ export function BranchIndicator() {
   // Resolve the current focus path to its owning repo via IPC.
   // `fetchSeq` guards against out-of-order resolutions when the user switches
   // focus rapidly (only the latest call's result is committed to state).
+  // We KEEP the previous repo visible while a new fetch is in flight — the
+  // chip only clears once we *know* the new path isn't inside a repo. That
+  // avoids the layout flash where the footer briefly loses its branch when
+  // the user clicks between terminal tabs.
   useEffect(() => {
     if (typeof window === "undefined" || !window.nestbrain?.git) return;
     if (!focusPath) {

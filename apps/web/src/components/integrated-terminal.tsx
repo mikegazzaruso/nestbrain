@@ -19,17 +19,38 @@ export function IntegratedTerminal({
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  // Last (cols, rows) we successfully shipped to the PTY. Used to avoid
+  // re-sending identical resizes during the React render storm that
+  // accompanies show/hide transitions — every redundant resize causes the
+  // shell (and any TUI like `claude` or `htop`) to redraw, and a redraw at
+  // the wrong moment is what produces the "text overlapping" glitch.
+  const lastSizeRef = useRef<{ cols: number; rows: number } | null>(null);
+  const fitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!containerRef.current || typeof window === "undefined" || !window.nestbrain) {
       return;
     }
 
+    const container = containerRef.current;
+
     const term = new Terminal({
       fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
       fontSize: 13,
       lineHeight: 1.2,
+      // letterSpacing 0 is critical — non-zero values throw off xterm's
+      // monospace cell calculations and produce the kind of "characters
+      // creeping over each other" effect Claude Code's TUI shows.
+      letterSpacing: 0,
       cursorBlink: true,
+      // `allowProposedApi` enables the addon-fit dimension calculations.
+      // Already on in defaults but pinning it explicitly avoids regressions
+      // on xterm version bumps.
+      allowProposedApi: true,
+      // Default xterm "scroll on output" is true; turn off the noisy keep-
+      // up-to-bottom for interactive TUI redraws so their cursor moves
+      // don't fight with auto-scroll.
+      scrollOnUserInput: true,
       theme: {
         background: "#0a0a0a",
         foreground: "#e8e8e8",
@@ -55,17 +76,57 @@ export function IntegratedTerminal({
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
-    term.open(containerRef.current);
+    term.open(container);
 
     termRef.current = term;
     fitRef.current = fit;
 
-    // Fit to container
-    try {
-      fit.fit();
-    } catch { /* ignore */ }
-
     const mn = window.nestbrain!;
+
+    /**
+     * Run fit() + ship the resulting size to the PTY, but only when the
+     * container is actually laid out. Hidden containers (display:none) have
+     * 0×0 dimensions, in which case fit() collapses to xterm's 2×2 minimum
+     * and any output drawn in that state lands in a tiny corner — that's
+     * the root cause of the overlap glitch when you toggle the terminal
+     * panel off/on while a TUI is running.
+     */
+    function safeFit(reason: string) {
+      void reason; // useful for ad-hoc debugging
+      const c = containerRef.current;
+      if (!c || !fitRef.current || !termRef.current) return;
+      const rect = c.getBoundingClientRect();
+      // Need at least a cell's worth of space in both axes before we trust
+      // fit. Below that we're either hidden or mid-transition.
+      if (rect.width < 24 || rect.height < 18) return;
+      try {
+        fitRef.current.fit();
+      } catch {
+        return;
+      }
+      const cols = termRef.current.cols;
+      const rows = termRef.current.rows;
+      if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols < 2 || rows < 2) {
+        return;
+      }
+      const prev = lastSizeRef.current;
+      if (prev && prev.cols === cols && prev.rows === rows) return;
+      lastSizeRef.current = { cols, rows };
+      try {
+        mn.terminal.resize(sessionId, cols, rows);
+      } catch {
+        /* PTY may have exited */
+      }
+    }
+
+    /** Coalesce many ResizeObserver / mount fires into a single fit. */
+    function scheduleFit(delay = 50) {
+      if (fitTimerRef.current) clearTimeout(fitTimerRef.current);
+      fitTimerRef.current = setTimeout(() => {
+        fitTimerRef.current = null;
+        safeFit("scheduled");
+      }, delay);
+    }
 
     const offData = mn.terminal.onData(sessionId, (data) => {
       term.write(data);
@@ -78,25 +139,17 @@ export function IntegratedTerminal({
       mn.terminal.write(sessionId, data);
     });
 
-    const resizeObserver = new ResizeObserver(() => {
-      if (!fitRef.current || !termRef.current) return;
-      try {
-        fitRef.current.fit();
-        mn.terminal.resize(sessionId, termRef.current.cols, termRef.current.rows);
-      } catch { /* ignore */ }
-    });
-    resizeObserver.observe(containerRef.current);
+    const resizeObserver = new ResizeObserver(() => scheduleFit(50));
+    resizeObserver.observe(container);
 
-    // Initial resize sync
-    setTimeout(() => {
-      if (!fitRef.current || !termRef.current) return;
-      try {
-        fitRef.current.fit();
-        mn.terminal.resize(sessionId, termRef.current.cols, termRef.current.rows);
-      } catch { /* ignore */ }
-    }, 50);
+    // Initial fit once the layout has settled.
+    scheduleFit(60);
 
     return () => {
+      if (fitTimerRef.current) {
+        clearTimeout(fitTimerRef.current);
+        fitTimerRef.current = null;
+      }
       offData();
       offExit();
       dataDisp.dispose();
@@ -104,29 +157,46 @@ export function IntegratedTerminal({
       term.dispose();
       termRef.current = null;
       fitRef.current = null;
+      lastSizeRef.current = null;
     };
   }, [sessionId]);
 
-  // Refit when becoming active or panel becomes visible again
+  // When this session becomes the active+visible one again (tab switch, or
+  // panel re-opened), re-fit and force a full repaint so a TUI that was
+  // mid-redraw at the time we hid the panel comes back drawn at the right
+  // dimensions instead of with stale glyphs from a smaller grid.
   useEffect(() => {
-    if (active && visible && fitRef.current && termRef.current && typeof window !== "undefined" && window.nestbrain) {
-      // Small delay so the container has its final size
-      const t = setTimeout(() => {
-        try {
-          fitRef.current?.fit();
-          if (termRef.current) {
-            window.nestbrain!.terminal.resize(
-              sessionId,
-              termRef.current.cols,
-              termRef.current.rows,
-            );
-            termRef.current.refresh(0, termRef.current.rows - 1);
-            termRef.current.focus();
-          }
-        } catch { /* ignore */ }
-      }, 30);
-      return () => clearTimeout(t);
-    }
+    if (!active || !visible) return;
+    if (!fitRef.current || !termRef.current) return;
+    if (typeof window === "undefined" || !window.nestbrain) return;
+    // Two-phase settle: first frame catches the show transition, the second
+    // (longer) one catches any layout adjustments from the surrounding
+    // resizable panel.
+    const t1 = setTimeout(() => {
+      const term = termRef.current;
+      const fit = fitRef.current;
+      if (!term || !fit) return;
+      const c = containerRef.current;
+      if (!c) return;
+      const rect = c.getBoundingClientRect();
+      if (rect.width < 24 || rect.height < 18) return;
+      try {
+        fit.fit();
+        const { cols, rows } = term;
+        const prev = lastSizeRef.current;
+        if (!prev || prev.cols !== cols || prev.rows !== rows) {
+          lastSizeRef.current = { cols, rows };
+          window.nestbrain!.terminal.resize(sessionId, cols, rows);
+        }
+        // Force a full repaint — clears stray glyphs from any prior
+        // hidden-state writes.
+        term.refresh(0, rows - 1);
+        term.focus();
+      } catch {
+        /* ignore */
+      }
+    }, 80);
+    return () => clearTimeout(t1);
   }, [active, visible, sessionId]);
 
   // Drag-and-drop a file (or several) onto the terminal: inject the absolute
@@ -147,10 +217,7 @@ export function IntegratedTerminal({
       }
     }
     if (paths.length === 0) return;
-    // Leading space so the path doesn't get concatenated onto whatever the
-    // user already typed without separation.
-    const text = (paths.length === 1 ? "" : "") + paths.join(" ") + " ";
-    window.nestbrain.terminal.write(sessionId, text);
+    window.nestbrain.terminal.write(sessionId, paths.join(" ") + " ");
     termRef.current?.focus();
   };
 
@@ -164,7 +231,7 @@ export function IntegratedTerminal({
         e.dataTransfer.dropEffect = "copy";
       }}
       className={`absolute inset-0 ${active ? "block" : "hidden"}`}
-      style={{ padding: "8px 0 0 8px" }}
+      style={{ padding: "8px 8px 4px 8px" }}
     />
   );
 }

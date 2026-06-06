@@ -90,9 +90,13 @@ export function GitStatusProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   // Periodic safety net — catches commits / checkouts done from an
-  // external terminal that don't touch any watched files.
+  // external terminal that don't touch any watched files. Kept long so the
+  // resulting `repos` map update (and the re-render cascade it triggers in
+  // every consumer of useGitStatus) doesn't show up as a periodic flash.
+  // chokidar fs events still drive sub-second refreshes for anything the
+  // user actually does.
   useEffect(() => {
-    const id = setInterval(refresh, 10_000);
+    const id = setInterval(refresh, 30_000);
     return () => clearInterval(id);
   }, [refresh]);
 

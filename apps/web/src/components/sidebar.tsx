@@ -90,29 +90,42 @@ export function Sidebar() {
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
 
+    // Coalesce mousemove → one setState per animation frame instead of one
+    // per pixel. Without this, fast drags fire 10–20 setState/frame and the
+    // sidebar (which feeds three contexts and re-renders the file tree) can
+    // visibly judder mid-drag. The pendingWidth ref also persists the last
+    // value we computed so the rAF callback always picks up the freshest.
+    let pendingWidth = width;
+    let rafId: number | null = null;
+
+    function flush() {
+      rafId = null;
+      setWidth(pendingWidth);
+    }
+
     function onMouseMove(e: MouseEvent) {
       if (!isDragging.current) return;
-      const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, e.clientX));
-      setWidth(newWidth);
+      pendingWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, e.clientX));
+      if (rafId === null) rafId = requestAnimationFrame(flush);
     }
 
     function onMouseUp() {
       isDragging.current = false;
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
-      // Save
-      localStorage.setItem(STORAGE_KEY, String(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, width))));
+      // Persist the final width once on mouse-up — saving on every frame
+      // wastes a localStorage write per pixel of drag.
+      localStorage.setItem(STORAGE_KEY, String(pendingWidth));
     }
 
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-  }, [width]);
-
-  // Save on width change
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, String(width));
   }, [width]);
 
   const { theme, toggle } = useTheme();
@@ -139,7 +152,11 @@ export function Sidebar() {
       }
     };
     void fetchCounts();
-    const id = setInterval(fetchCounts, 10_000);
+    // Long cadence: a 10s poll caused a visible flash whenever the badge
+    // re-rendered into existence. The /knowledge page already refreshes
+    // its own list when it's mounted; the sidebar badge is just an
+    // ambient notification.
+    const id = setInterval(fetchCounts, 30_000);
     return () => {
       cancelled = true;
       clearInterval(id);
@@ -211,8 +228,9 @@ export function Sidebar() {
           })}
         </nav>
 
-        {/* Footer */}
-        <div className="px-4 py-3 border-t border-sidebar-border flex items-center gap-2">
+        {/* Footer — the BranchIndicator slot is height-reserved so the
+            footer doesn't bob whenever the chip appears or disappears */}
+        <div className="h-9 px-4 border-t border-sidebar-border flex items-center gap-2">
           <p className="text-[10px] text-muted/30 shrink-0">NestBrain</p>
           <div className="flex-1 min-w-0 flex justify-center">
             <BranchIndicator />
