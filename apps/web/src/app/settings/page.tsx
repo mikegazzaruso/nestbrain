@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Settings as SettingsIcon,
   Check,
@@ -8,8 +9,12 @@ import {
   Eye,
   EyeOff,
   AlertCircle,
+  AlertTriangle,
   FolderOpen,
   ArrowRight,
+  Cpu,
+  RefreshCw,
+  X,
 } from "lucide-react";
 import { SyncAccountSection } from "@/components/sync-account-section";
 import { CliInstallSection } from "@/components/cli-install-section";
@@ -19,8 +24,15 @@ interface OpenAIModel {
   owned_by: string;
 }
 
+interface OllamaModel {
+  name: string;
+  size?: number;
+}
+
+type Provider = "claude-cli" | "openai" | "ollama";
+
 export default function SettingsPage() {
-  const [provider, setProvider] = useState<"claude-cli" | "openai">("claude-cli");
+  const [provider, setProvider] = useState<Provider>("claude-cli");
   const [claudeModel, setClaudeModel] = useState("sonnet");
   const [openaiApiKey, setOpenaiApiKey] = useState("");
   const [openaiModel, setOpenaiModel] = useState("gpt-4o");
@@ -33,6 +45,13 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Ollama
+  const [ollamaModel, setOllamaModel] = useState("");
+  const [ollamaModels, setOllamaModels] = useState<OllamaModel[]>([]);
+  const [ollamaStatus, setOllamaStatus] = useState<"idle" | "checking" | "up" | "down">("idle");
+  const [ollamaError, setOllamaError] = useState<string | null>(null);
+  const [showOllamaError, setShowOllamaError] = useState(false);
+
   // Load current settings
   useEffect(() => {
     fetch("/api/settings")
@@ -43,6 +62,7 @@ export default function SettingsPage() {
           setClaudeModel(data.llm.claudeModel ?? "sonnet");
           setOpenaiApiKey(data.llm.openaiApiKey ?? "");
           setOpenaiModel(data.llm.openaiModel ?? "gpt-4o");
+          setOllamaModel(data.llm.ollamaModel ?? "");
         }
         setAutoCompile(data.autoCompile ?? false);
         setLoading(false);
@@ -59,6 +79,38 @@ export default function SettingsPage() {
       loadModels();
     }
   }, [provider]);
+
+  // Probe Ollama whenever it becomes the selected provider.
+  useEffect(() => {
+    if (provider === "ollama") checkOllama();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider]);
+
+  async function checkOllama() {
+    setOllamaStatus("checking");
+    setOllamaError(null);
+    try {
+      const res = await fetch("/api/ollama/models");
+      const data = await res.json();
+      if (!data.running) {
+        setOllamaStatus("down");
+        setOllamaModels([]);
+        setOllamaError(data.error ?? "Ollama server is not running.");
+        setShowOllamaError(true);
+        return;
+      }
+      setOllamaStatus("up");
+      const list: OllamaModel[] = data.models ?? [];
+      setOllamaModels(list);
+      // Keep the saved model if still installed, else fall back to the first.
+      setOllamaModel((cur) => (list.some((m) => m.name === cur) ? cur : list[0]?.name ?? ""));
+    } catch {
+      setOllamaStatus("down");
+      setOllamaModels([]);
+      setOllamaError("Failed to reach the Ollama server.");
+      setShowOllamaError(true);
+    }
+  }
 
   async function loadModels(key?: string) {
     setModelsLoading(true);
@@ -93,6 +145,7 @@ export default function SettingsPage() {
             claudeModel,
             openaiApiKey,
             openaiModel,
+            ollamaModel,
           },
           autoCompile,
         }),
@@ -134,7 +187,7 @@ export default function SettingsPage() {
             LLM Provider
           </h2>
 
-          <div className="grid grid-cols-2 gap-3 mb-6">
+          <div className="grid grid-cols-3 gap-3 mb-6">
             {/* Claude option */}
             <button
               onClick={() => setProvider("claude-cli")}
@@ -172,6 +225,24 @@ export default function SettingsPage() {
               </div>
               <p className="text-[11px] text-muted/60 leading-relaxed">
                 Uses OpenAI API. Requires an API key.
+              </p>
+            </button>
+
+            {/* Ollama option */}
+            <button
+              onClick={() => setProvider("ollama")}
+              className={`p-4 rounded-xl border-2 text-left transition-all ${
+                provider === "ollama"
+                  ? "border-accent bg-accent/5"
+                  : "border-border hover:border-border hover:bg-card"
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium">Ollama</span>
+                {provider === "ollama" && <Check size={14} className="text-accent" />}
+              </div>
+              <p className="text-[11px] text-muted/60 leading-relaxed">
+                Local models on your machine. Private, no API key.
               </p>
             </button>
           </div>
@@ -276,6 +347,77 @@ export default function SettingsPage() {
               </div>
             </div>
           )}
+
+          {/* Ollama settings */}
+          {provider === "ollama" && (
+            <div className="space-y-4 p-5 rounded-xl bg-card border border-border">
+              {/* Server status */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs">
+                  {ollamaStatus === "checking" ? (
+                    <>
+                      <Loader2 size={13} className="animate-spin text-muted" />
+                      <span className="text-muted">Checking Ollama server…</span>
+                    </>
+                  ) : ollamaStatus === "up" ? (
+                    <>
+                      <span className="w-2 h-2 rounded-full bg-green-400" />
+                      <span className="text-green-400/90">
+                        Ollama is running · {ollamaModels.length} model{ollamaModels.length === 1 ? "" : "s"}
+                      </span>
+                    </>
+                  ) : ollamaStatus === "down" ? (
+                    <>
+                      <AlertCircle size={13} className="text-red-400" />
+                      <span className="text-red-400">Ollama server not reachable</span>
+                    </>
+                  ) : (
+                    <span className="text-muted/60">Ollama</span>
+                  )}
+                </div>
+                <button
+                  onClick={checkOllama}
+                  disabled={ollamaStatus === "checking"}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-background border border-border rounded-lg text-[11px] text-muted hover:text-foreground hover:border-accent/30 transition-colors disabled:opacity-40"
+                >
+                  <RefreshCw size={11} className={ollamaStatus === "checking" ? "animate-spin" : ""} />
+                  Check again
+                </button>
+              </div>
+
+              {/* Model selector — enabled only when the server is up */}
+              <div>
+                <label className="block text-xs text-muted/70 mb-2">Model</label>
+                {ollamaStatus === "up" && ollamaModels.length > 0 ? (
+                  <select
+                    value={ollamaModel}
+                    onChange={(e) => setOllamaModel(e.target.value)}
+                    className="w-full px-3 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20"
+                  >
+                    {ollamaModels.map((m) => (
+                      <option key={m.name} value={m.name}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : ollamaStatus === "up" && ollamaModels.length === 0 ? (
+                  <p className="text-[11px] text-muted/60 leading-relaxed px-3 py-2.5 bg-background border border-border rounded-lg">
+                    No models installed. Pull one from your terminal, e.g.{" "}
+                    <code className="text-accent/70 bg-accent/5 px-1 rounded">ollama pull llama3</code>, then “Check again”.
+                  </p>
+                ) : (
+                  <div className="flex items-center gap-2 px-3 py-2.5 bg-background border border-border rounded-lg text-xs text-muted/50">
+                    {ollamaStatus === "checking" ? "Detecting models…" : "Start the Ollama server to pick a model."}
+                  </div>
+                )}
+              </div>
+
+              <p className="text-[11px] text-muted/40 leading-relaxed">
+                Runs models locally via{" "}
+                <code className="text-accent/60 bg-accent/5 px-1 rounded">ollama serve</code>. Nothing leaves your machine.
+              </p>
+            </div>
+          )}
         </section>
 
         {/* Auto-Compile */}
@@ -337,7 +479,88 @@ export default function SettingsPage() {
         {/* Danger Zone */}
         <DangerZone />
       </div>
+
+      {showOllamaError && (
+        <OllamaErrorModal
+          message={ollamaError ?? "Ollama server is not running."}
+          onClose={() => setShowOllamaError(false)}
+          onRetry={() => {
+            setShowOllamaError(false);
+            checkOllama();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function OllamaErrorModal({
+  message,
+  onClose,
+  onRetry,
+}: {
+  message: string;
+  onClose: () => void;
+  onRetry: () => void;
+}) {
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div
+      className="z-[120] bg-black/60 backdrop-blur-sm flex items-center justify-center"
+      style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh" }}
+      onClick={onClose}
+    >
+      <div
+        className="bg-card border border-border rounded-2xl shadow-2xl p-6 max-w-md w-[90%] mx-4 animate-pop-in"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center shadow-lg shadow-red-500/20">
+              <AlertTriangle size={18} className="text-white" />
+            </div>
+            <h3 className="text-base font-semibold">Ollama not running</h3>
+          </div>
+          <button onClick={onClose} className="text-muted/40 hover:text-muted transition-colors">
+            <X size={16} />
+          </button>
+        </div>
+
+        <p className="text-sm text-muted/80 leading-relaxed mb-3">{message}</p>
+        <div className="text-[12px] text-muted/60 leading-relaxed bg-background border border-border rounded-lg p-3 mb-5">
+          <p className="mb-1">Get Ollama running, then retry:</p>
+          <ol className="list-decimal list-inside space-y-0.5">
+            <li>
+              Install from{" "}
+              <span className="text-accent/70">ollama.com</span>
+            </li>
+            <li>
+              Start it: <code className="text-accent/70 bg-accent/5 px-1 rounded">ollama serve</code>
+            </li>
+            <li>
+              Pull a model: <code className="text-accent/70 bg-accent/5 px-1 rounded">ollama pull llama3</code>
+            </li>
+          </ol>
+        </div>
+
+        <div className="flex items-center justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-muted hover:text-foreground border border-border rounded-lg hover:bg-card-hover transition-colors"
+          >
+            Dismiss
+          </button>
+          <button
+            onClick={onRetry}
+            className="px-5 py-2 bg-accent text-background text-sm font-medium rounded-lg hover:bg-accent-hover transition-colors flex items-center gap-2"
+          >
+            <RefreshCw size={14} />
+            Retry
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 

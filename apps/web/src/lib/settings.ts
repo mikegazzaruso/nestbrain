@@ -3,10 +3,11 @@ import { join, dirname, resolve } from "node:path";
 
 export interface AppSettings {
   llm: {
-    provider: "claude-cli" | "openai";
+    provider: "claude-cli" | "openai" | "ollama";
     openaiApiKey: string;
     openaiModel: string;
     claudeModel: string;
+    ollamaModel: string;
   };
   autoCompile?: boolean;
   onboardingCompleted?: boolean;
@@ -18,6 +19,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     openaiApiKey: "",
     openaiModel: "gpt-4o",
     claudeModel: "sonnet",
+    ollamaModel: "",
   },
   autoCompile: false,
   onboardingCompleted: false,

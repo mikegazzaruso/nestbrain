@@ -1363,11 +1363,19 @@ async function getCliStatus(): Promise<CliStatus> {
       // Normalize: readlink may return a relative path; resolve against the
       // link's directory.
       const resolved = link.startsWith("/") ? link : resolve(join(target, ".."), link);
-      return { supported: true, target, source, installed: true, stale: resolved !== source };
+      // "Stale" must mean the symlink is BROKEN (points at a path that no
+      // longer exists — e.g. the app was moved or deleted). It must NOT mean
+      // "points at a different valid wrapper than this exact build": the
+      // packaged app, a dev build, and a translocated copy all resolve to
+      // different but equally-working sources, and comparing against the
+      // current build's path flagged a perfectly good install as stale on
+      // every relaunch, forcing a needless re-install.
+      const dangling = !existsSync(resolved);
+      return { supported: true, target, source, installed: true, stale: dangling };
     } catch {
-      // Not a symlink (regular file or dir) — count as installed-but-stale
-      // because we don't know what it is.
-      return { supported: true, target, source, installed: true, stale: true };
+      // Not a symlink (regular file or dir). It exists (checked above) so the
+      // command is present; we simply don't manage it. Don't nag as stale.
+      return { supported: true, target, source, installed: true, stale: false };
     }
   }
   // Windows: file or shortcut. We just check it exists; staleness check

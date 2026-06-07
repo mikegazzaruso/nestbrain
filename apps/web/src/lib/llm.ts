@@ -21,9 +21,12 @@ export async function getLLM(): Promise<LLMProviderInterface> {
 
   cachedProvider = createProvider({
     provider: settings.llm.provider,
-    model: settings.llm.provider === "claude-cli"
-      ? settings.llm.claudeModel
-      : settings.llm.openaiModel,
+    model:
+      settings.llm.provider === "claude-cli"
+        ? settings.llm.claudeModel
+        : settings.llm.provider === "ollama"
+          ? settings.llm.ollamaModel
+          : settings.llm.openaiModel,
     maxTurns: 5,
     apiKey: settings.llm.provider === "openai" ? settings.llm.openaiApiKey : undefined,
   });

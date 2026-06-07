@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
-import type { LLMProviderInterface, LLMResponse } from "./provider";
+import type { AgentOptions, LLMProviderInterface, LLMResponse } from "./provider";
 
 /**
  * Pull a JSON object/array out of a model reply that may contain a fenced
@@ -45,10 +45,10 @@ function parseJsonReply<T>(text: string): T {
   throw new Error(`No parseable JSON in model reply: ${t.slice(0, 200)}…`);
 }
 
-function runClaude(args: string[], stdin?: string): Promise<string> {
+function runClaude(args: string[], stdin?: string, cwd?: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const proc = spawn("claude", args, {
-      cwd: tmpdir(),
+      cwd: cwd ?? tmpdir(),
       stdio: ["pipe", "pipe", "pipe"],
       timeout: 600_000,
     });
@@ -140,6 +140,59 @@ export class ClaudeCLIProvider implements LLMProviderInterface {
       throw new Error(`Claude CLI error: ${data.result}`);
     }
 
+    return {
+      text: data.result ?? "",
+      usage: data.usage
+        ? {
+            inputTokens: data.usage.input_tokens ?? 0,
+            outputTokens: data.usage.output_tokens ?? 0,
+          }
+        : undefined,
+    };
+  }
+
+  /**
+   * Agentic completion. Unlike `ask`, this lets the CLI use tools across
+   * multiple turns — so the model can read the user's local projects, search
+   * and fetch the web, or run commands to verify facts before answering.
+   * Used by the wiki AI-edit flow ("analyze this project and fix the page").
+   */
+  async agent(prompt: string, opts: AgentOptions = {}): Promise<LLMResponse> {
+    const args = [
+      "-p",
+      "-",
+      "--output-format",
+      "json",
+      "--model",
+      this.model,
+      "--max-turns",
+      String(opts.maxTurns ?? 24),
+      "--no-session-persistence",
+      "--disable-slash-commands",
+      // Enable a capable but read-leaning toolset so the agent can inspect
+      // local code and the web. `--tools` limits what's available (no
+      // Edit/Write — we persist the result ourselves), and `--allowedTools`
+      // pre-approves them so they run without a prompt in headless (-p) mode,
+      // where an approval request would otherwise be auto-denied. Keep
+      // --setting-sources empty so the user's global skills / project
+      // CLAUDE.md don't hijack the run.
+      "--tools",
+      "Read,Grep,Glob,WebFetch,WebSearch,Bash",
+      "--allowedTools",
+      "Read,Grep,Glob,WebFetch,WebSearch,Bash",
+      "--setting-sources",
+      "",
+    ];
+
+    if (opts.systemPrompt) {
+      args.push("--system-prompt", opts.systemPrompt);
+    }
+
+    const stdout = await runClaude(args, prompt, opts.cwd);
+    const data = JSON.parse(stdout);
+    if (data.is_error) {
+      throw new Error(`Claude CLI error: ${data.result}`);
+    }
     return {
       text: data.result ?? "",
       usage: data.usage

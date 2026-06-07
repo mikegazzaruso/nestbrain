@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { TranslateButton } from "@/components/translate-button";
+import { WikiEditModal } from "@/components/wiki-edit-modal";
 import { useCompile } from "@/lib/compile-context";
 import {
   ChevronRight,
@@ -13,6 +14,7 @@ import {
   ArrowLeft,
   Link2,
   Hash,
+  Pencil,
 } from "lucide-react";
 
 interface WikiNode {
@@ -48,6 +50,7 @@ function WikiPageContent() {
   const [isTranslated, setIsTranslated] = useState(false);
   const [meta, setMeta] = useState<Record<string, string> | null>(null);
   const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     loadTree();
@@ -207,6 +210,13 @@ function WikiPageContent() {
                 ))}
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setEditing(true)}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs text-muted/60 hover:text-accent hover:bg-accent/10 transition-colors"
+                >
+                  <Pencil size={12} />
+                  Edit
+                </button>
                 <TranslateButton
                   content={content}
                   onTranslated={(translated) => {
@@ -240,6 +250,29 @@ function WikiPageContent() {
               </div>
 
               <MarkdownRenderer content={content} meta={meta ?? undefined} />
+
+              <WikiEditModal
+                isOpen={editing}
+                path={articlePath}
+                initialContent={originalContent ?? content}
+                onClose={() => setEditing(false)}
+                onSaved={(saved) => {
+                  setContent(saved);
+                  setOriginalContent(saved);
+                  setIsTranslated(false);
+                  // Refresh frontmatter-derived metadata after a save.
+                  const fmMatch = saved.match(/^---\n([\s\S]*?)\n---/);
+                  if (fmMatch) {
+                    const parsed: Record<string, string> = {};
+                    for (const line of fmMatch[1].split("\n")) {
+                      const m = line.match(/^(\w+):\s*(.+)$/);
+                      if (m) parsed[m[1]] = m[2].replace(/^"|"$/g, "");
+                    }
+                    setMeta(parsed);
+                  }
+                  loadTree();
+                }}
+              />
             </div>
           ) : (
             <div className="flex-1 flex items-center justify-center h-full">

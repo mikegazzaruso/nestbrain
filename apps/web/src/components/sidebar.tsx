@@ -166,16 +166,24 @@ export function Sidebar() {
   return (
     <div className="relative shrink-0 flex" style={{ width }}>
       <aside className="w-full h-full border-r border-sidebar-border bg-sidebar flex flex-col overflow-hidden">
-        {/* Logo */}
-        <Link href="/" className="sidebar-header block px-5 py-4 border-b border-sidebar-border">
-          <div className="flex items-baseline gap-2">
-            <h1 className="text-lg font-semibold tracking-tight">
-              <span className="text-accent">Nest</span>Brain
-            </h1>
-            <span className="text-[10px] text-muted/40 italic">by NextEpochs</span>
-          </div>
-          <p className="text-[11px] text-muted/60 mt-0.5">v{process.env.NEXT_PUBLIC_APP_VERSION}</p>
-        </Link>
+        {/* Logo — the wrapper is the macOS window-drag region (leaves room for
+            the traffic lights); the inner Link opts back into no-drag (see
+            globals.css) so clicking it actually navigates Home. */}
+        <div className="sidebar-header border-b border-sidebar-border">
+          <Link
+            href="/"
+            title="Home"
+            className="block px-5 py-4 hover:bg-card/40 transition-colors cursor-pointer"
+          >
+            <div className="flex items-baseline gap-2">
+              <h1 className="text-lg font-semibold tracking-tight">
+                <span className="text-accent">Nest</span>Brain
+              </h1>
+              <span className="text-[10px] text-muted/40 italic">by NextEpochs</span>
+            </div>
+            <p className="text-[11px] text-muted/60 mt-0.5">v{process.env.NEXT_PUBLIC_APP_VERSION}</p>
+          </Link>
+        </div>
 
         {/* NestBrain file tree (Electron only, after onboarding) */}
         {nestBrainPath && (

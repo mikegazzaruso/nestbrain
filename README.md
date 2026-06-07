@@ -2,7 +2,7 @@
 
 **Your AI-powered second brain, packaged as a native workspace for people who actually build things.** Raw sources go in, a structured Markdown wiki comes out — compiled, linked, and maintained entirely by AI. Inside a full integrated workspace with a VS Code-style editor, a real terminal, and deep **Claude Code** integration that finally makes your LLM remember what you were doing yesterday.
 
-![NestBrain](https://img.shields.io/badge/status-v1.5.0-brightgreen) ![TypeScript](https://img.shields.io/badge/TypeScript-100%25-blue) ![License](https://img.shields.io/badge/license-GPL--3.0-blue) ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)
+![NestBrain](https://img.shields.io/badge/status-v1.6.0-brightgreen) ![TypeScript](https://img.shields.io/badge/TypeScript-100%25-blue) ![License](https://img.shields.io/badge/license-GPL--3.0-blue) ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)
 
 🌐 **Website**: [nestbrain.app](https://nestbrain.app)
 
@@ -49,6 +49,12 @@ But NestBrain is more than just a knowledge base. It's a **full integrated works
 Drop any source — a URL, a PDF, a GitHub repo, an arXiv paper, a YouTube video, an RSS feed — and NestBrain compiles it into a beautifully linked wiki. Concepts connect automatically. Gaps surface. Every article has backlinks, citations, and a clean Markdown body you can open in Obsidian too.
 
 ![Wiki article view — "Privacy in AI" with concepts sidebar, related links, and linked references](docs/screenshots/wiki-article.png)
+
+### ✍️ Edit any page — by hand or by AI
+Every wiki article has an **Edit** button that opens a focused editor with two modes:
+
+- **Manual** — a real Markdown editor (CodeMirror 6, syntax highlighting, frontmatter and all) for quick fixes.
+- **Ask AI** — describe in plain language what's wrong and let the model rewrite the page. With the Claude provider this is **agentic**: it can read your local projects and search/fetch the web to ground the correction in reality. Say *"NestBrain is one of our projects — analyze it and fix this page"* or *"go to its GitHub repo, analyze it, and correct the article"*, and it inspects the actual code before rewriting. The result lands back in the editor for you to review before saving — nothing is written without your OK.
 
 ### 💻 A real workspace, not just a viewer
 - **VS Code-style file tree** with right-click rename/delete/new-file, **typed file icons** (TS/Python/Dockerfile/Markdown/…), and auto-refresh via native filesystem watchers
@@ -105,7 +111,7 @@ The combination — automatic capture on commits + manual promote escape hatch +
 ### 📚 A proper knowledge base engine
 - **Hybrid search** — semantic (local embeddings via all-MiniLM-L6-v2) + keyword, normalized and weighted
 - **Q&A with citations** — natural-language questions grounded in your wiki, answers in your language, citations filtered to only what was actually referenced
-- **Mind Map** — interactive radial graph of concept connections
+- **Mind Map** — a neural-style graph that bundles dense topics into glowing **macro atoms** and explodes them on hover, with trackpad pinch-zoom
 - **Health Check** — LLM-powered wiki audit: orphans, broken links, stubs, gaps, inconsistencies
 - **Incremental compilation** — only new/changed sources are processed, ~3–5 LLM calls per source regardless of total wiki size
 - **Obsidian compatible** — `Library/Knowledge/` is a valid Obsidian vault; open it from Obsidian and work on the same data
@@ -116,9 +122,9 @@ Type a question in natural language. NestBrain runs hybrid search over your wiki
 ![Ask view — Q&A with a structured answer and filtered citations linking back to wiki articles](docs/screenshots/ask-qa.png)
 
 #### Explore concept connections visually
-The Mind Map is an interactive radial graph of every concept in your wiki and how they link to each other. Click any node to jump straight to its article. Spot clusters, dead ends, and unexpected connections at a glance.
+The Mind Map is a neural-style graph of every concept in your wiki. Dense topic groups collapse into **macro atoms** — larger, pulsing, glowing nodes — so a big knowledge base stays readable instead of turning into hairball. **Hover a macro atom and it explodes**, fanning its member atoms out on clean, non-overlapping rings; move the cursor away and they re-collapse. Nothing floats unconnected, every cluster is colour-coded, and you can **pinch-zoom and two-finger pan** with the trackpad. Click any node to jump straight to its article.
 
-![Mind Map view — radial concept graph centered on "local-ai" with connected topics](docs/screenshots/mind-map.png)
+![Mind Map view — neural graph with colour-coded macro-atom clusters, one expanded into its member concepts](docs/screenshots/mind-map.png)
 
 #### Keep your wiki clean with Health Check
 NestBrain runs a full LLM-powered audit of your knowledge base: orphan articles (nothing links to them), broken links, stubs, content gaps, and inconsistencies. Every finding is actionable — click it and jump to the article.
@@ -243,6 +249,16 @@ Uses the OpenAI API. Configure your key in Settings.
 
 Supports GPT-4o, GPT-4 Turbo, GPT-5, o1, o3, and o4 series. The provider automatically handles the `max_tokens` vs `max_completion_tokens` and `system` vs `developer` role differences across models.
 
+### Ollama (local, private)
+Run models entirely on your own machine — no API key, nothing leaves your computer. Select **Ollama** in Settings and NestBrain checks whether the local server (`http://127.0.0.1:11434`, overridable via `OLLAMA_HOST`) is up. If it isn't, you get a popup with the exact steps to fix it (`ollama serve`, `ollama pull …`); once it's running, a dropdown lists every model installed on your machine for you to pick from.
+
+```bash
+ollama serve            # start the local server
+ollama pull llama3      # install a model
+```
+
+Local models don't support tool use, so the agentic wiki AI-edit falls back to the model's own knowledge with Ollama — full agentic editing stays on the Claude provider.
+
 ---
 
 ## Supported Ingest Sources
@@ -306,7 +322,7 @@ Open `NestBrain/Library/Knowledge/` as a vault in Obsidian and work on the same 
 
 Settings are managed through the **Settings** page in the app. App preferences are persisted in `NestBrain/.nestbrain/settings.json`:
 
-- LLM provider (Claude CLI / OpenAI) and model
+- LLM provider (Claude CLI / OpenAI / Ollama) and model — Ollama auto-detects the local server and lists installed models
 - OpenAI API key
 - Auto-compile toggle (runs `compile` after every accepted knowledge atom and every ingest)
 - Onboarding completion flag

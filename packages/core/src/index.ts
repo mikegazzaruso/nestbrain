@@ -16,6 +16,7 @@ export type { SearchOptions } from "./search";
 export type { LLMProviderInterface, LLMResponse } from "./llm";
 export { createProvider } from "./llm";
 export { PROMPTS } from "./llm";
+export { OLLAMA_DEFAULT_HOST, ollamaHost } from "./llm";
 
 export { VectorStore } from "./vectorstore";
 

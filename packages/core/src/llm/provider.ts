@@ -5,10 +5,25 @@ export interface LLMResponse {
   usage?: { inputTokens: number; outputTokens: number };
 }
 
+export interface AgentOptions {
+  systemPrompt?: string;
+  /** Working directory the agent runs in (so it can read local projects). */
+  cwd?: string;
+  /** Max agent turns (tool-use loops). */
+  maxTurns?: number;
+}
+
 export interface LLMProviderInterface {
   readonly name: LLMProvider;
   ask(prompt: string, systemPrompt?: string): Promise<LLMResponse>;
   askStructured<T>(prompt: string, schema: Record<string, unknown>): Promise<T>;
+  /**
+   * Agentic completion: the model may use tools (read files, search/fetch the
+   * web, run commands) across multiple turns before producing its answer.
+   * Optional — only providers that wrap a tool-capable runtime implement it
+   * (today: claude-cli). Callers should fall back to `ask` when absent.
+   */
+  agent?(prompt: string, opts?: AgentOptions): Promise<LLMResponse>;
 }
 
 export function createProvider(config: {
@@ -24,7 +39,7 @@ export function createProvider(config: {
     case "openai":
       return new (require("./openai").OpenAIProvider)(config.model, config.apiKey);
     case "ollama":
-      throw new Error("Ollama provider not yet implemented");
+      return new (require("./ollama").OllamaProvider)(config.model);
     default:
       throw new Error(`Unknown provider: ${config.provider}`);
   }

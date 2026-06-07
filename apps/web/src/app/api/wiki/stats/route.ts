@@ -3,16 +3,30 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { getDataPaths } from "@/lib/config";
 
+/** Count .md files under a directory, recursing into subfolders. */
+async function countMarkdown(dir: string): Promise<number> {
+  let n = 0;
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  for (const e of entries) {
+    if (e.name.startsWith(".")) continue;
+    if (e.isDirectory()) n += await countMarkdown(join(dir, e.name));
+    else if (e.name.endsWith(".md")) n++;
+  }
+  return n;
+}
+
 export async function GET() {
   try {
     const { wikiPath, rawPath } = getDataPaths();
     const stats = { sources: 0, concepts: 0, outputs: 0, rawFiles: 0, totalWords: 0, recentArticles: [] as Array<{ title: string; path: string; updated: string; type: string }> };
 
-    // Count raw files
-    try {
-      const rawFiles = await readdir(rawPath);
-      stats.rawFiles = rawFiles.filter((f) => f.endsWith(".md")).length;
-    } catch { /* */ }
+    // Count raw source files (recursively — project sources live in raw/projects/).
+    stats.rawFiles = await countMarkdown(rawPath);
 
     // Count wiki articles and gather recent
     const allArticles: Array<{ title: string; path: string; updated: string; type: string; mtime: number }> = [];
