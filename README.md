@@ -257,7 +257,7 @@ ollama serve            # start the local server
 ollama pull llama3      # install a model
 ```
 
-Local models don't support tool use, so the agentic wiki AI-edit falls back to the model's own knowledge with Ollama — full agentic editing stays on the Claude provider.
+Tool-capable local models (those whose `ollama show` lists the `tools` capability — e.g. `gemma3`/`gemma4`, `llama3.x`, `qwen2.5`/`qwen3`, `mistral`) drive the **agentic** wiki AI-edit too: NestBrain runs a local tool-calling loop with read-only filesystem + web-fetch tools scoped to your workspace, so the model can inspect your projects or fetch a GitHub page before rewriting — all on-device. Models without the `tools` capability transparently fall back to a plain, knowledge-only edit.
 
 ---
 
