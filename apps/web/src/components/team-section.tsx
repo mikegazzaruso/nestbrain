@@ -13,6 +13,8 @@ import {
   ShieldCheck,
   RefreshCw,
   ArrowUpDown,
+  ArrowRight,
+  Lock,
 } from "lucide-react";
 
 export function TeamSection() {
@@ -30,6 +32,9 @@ export function TeamSection() {
   // First-run provisioning of a fresh server.
   const [needsSetup, setNeedsSetup] = useState(false);
   const [token, setToken] = useState("");
+  // Show the upsell by default; reveal the connect form on demand (or when a
+  // server was remembered from a previous session).
+  const [showConnect, setShowConnect] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.nestbrain?.team) {
@@ -108,11 +113,16 @@ export function TeamSection() {
 
       <div className="p-5 rounded-xl bg-card border border-border space-y-4">
         {!connected ? (
+          showConnect ? (
           <>
-            <p className="text-[12px] text-muted/60 leading-relaxed">
-              Share your knowledge base with your team on a server you control. Connect to your
-              company&apos;s NestBrain Team Server.
-            </p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[12px] text-muted/60 leading-relaxed">
+                Connect to your company&apos;s NestBrain Team Server.
+              </p>
+              <button onClick={() => setShowConnect(false)} className="text-[11px] text-muted/50 hover:text-foreground shrink-0">
+                ← back
+              </button>
+            </div>
             <div>
               <label className="block text-xs text-muted/70 mb-2">Team Server URL</label>
               <div className="relative">
@@ -151,6 +161,9 @@ export function TeamSection() {
               {needsSetup ? "Create admin & connect" : "Connect"}
             </button>
           </>
+          ) : (
+            <UpsellCard onConnect={() => setShowConnect(true)} />
+          )
         ) : (
           <>
             <div className="flex items-center justify-between">
@@ -320,6 +333,45 @@ function MembersBlock({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function UpsellCard({ onConnect }: { onConnect: () => void }) {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-accent flex items-center justify-center shadow-lg shadow-violet-500/20 shrink-0">
+          <Users size={18} className="text-white" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-foreground">Share knowledge across your team</p>
+          <p className="text-[12px] text-muted/60 leading-relaxed mt-0.5">
+            Compile once, share with everyone. Your team&apos;s knowledge base syncs in real time on a server
+            {" "}<b className="text-foreground/80">you</b> control — your data, your infrastructure.
+          </p>
+        </div>
+      </div>
+
+      <ul className="space-y-1.5 text-[12px] text-muted/70">
+        <li className="flex items-center gap-2"><Check size={13} className="text-green-400/70 shrink-0" /> Real-time sync of your compiled knowledge across the team</li>
+        <li className="flex items-center gap-2"><Server size={13} className="text-accent/60 shrink-0" /> Self-hosted on your own server — full data sovereignty</li>
+        <li className="flex items-center gap-2"><Lock size={13} className="text-accent/60 shrink-0" /> Members, seats and access managed by your admin</li>
+      </ul>
+
+      <div className="flex items-center gap-3 pt-1">
+        <a
+          href="https://nestbrain.app"
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-br from-violet-500 to-accent text-white text-sm font-medium rounded-lg hover:opacity-90 transition-opacity shadow-lg shadow-violet-500/20"
+        >
+          Get Enterprise <ArrowRight size={14} />
+        </a>
+        <button onClick={onConnect} className="text-[12px] text-muted/60 hover:text-foreground transition-colors">
+          I already have a Team Server →
+        </button>
+      </div>
     </div>
   );
 }
