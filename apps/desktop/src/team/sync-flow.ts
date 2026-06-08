@@ -12,7 +12,13 @@ import { diffFiles, type FileMap, type SyncBackend } from "@nestbrain/sync";
 // churny). Everything else under Library/Knowledge is structured wiki content.
 const IGNORE = new Set([".git", "node_modules", ".nestbrain", ".obsidian", "vector-index.json"]);
 
-export async function walkLocal(dir: string, root = dir, out: FileMap = {}): Promise<FileMap> {
+/**
+ * Walk the wiki folder into a path → {hash(sha256), size, mtime} map.
+ * Incremental: when `cache[path]` matches a file's current size + mtime, its
+ * hash is reused without reading/hashing the file — mirroring the Drive
+ * engine's mtime/size fast-path so an unchanged tree costs only stat()s.
+ */
+export async function walkLocal(dir: string, cache: FileMap = {}, root = dir, out: FileMap = {}): Promise<FileMap> {
   let entries;
   try {
     entries = await readdir(dir, { withFileTypes: true });
@@ -23,15 +29,18 @@ export async function walkLocal(dir: string, root = dir, out: FileMap = {}): Pro
     if (e.name.startsWith(".") || IGNORE.has(e.name)) continue;
     const full = join(dir, e.name);
     if (e.isDirectory()) {
-      await walkLocal(full, root, out);
+      await walkLocal(full, cache, root, out);
     } else {
-      const buf = await readFile(full);
+      const rel = relative(root, full).split(sep).join("/");
       const st = await stat(full);
-      out[relative(root, full).split(sep).join("/")] = {
-        hash: createHash("sha256").update(buf).digest("hex"),
-        size: buf.length,
-        mtime: Math.floor(st.mtimeMs / 1000),
-      };
+      const mtime = Math.floor(st.mtimeMs / 1000);
+      const cached = cache[rel];
+      if (cached && cached.size === st.size && cached.mtime === mtime) {
+        out[rel] = cached; // unchanged → reuse hash, skip read+sha256
+      } else {
+        const buf = await readFile(full);
+        out[rel] = { hash: createHash("sha256").update(buf).digest("hex"), size: buf.length, mtime };
+      }
     }
   }
   return out;
@@ -70,7 +79,7 @@ export async function runSync(
 ): Promise<SyncResult> {
   let cur = base;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
-    const local = await walkLocal(dir);
+    const local = await walkLocal(dir, cur); // `cur` doubles as the mtime/size→hash cache
     const remote = await backend.getManifest(workspaceId);
     const actions = diffFiles(cur, local, remote.files);
 

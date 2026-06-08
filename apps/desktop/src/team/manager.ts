@@ -47,6 +47,8 @@ export class TeamManager {
   private watcher: WorkspaceWatcher | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private suppressUntil = 0;
+  private localDirty = false;
+  private readonly lastVersion = new Map<string, number>();
 
   constructor(private opts: TeamManagerOptions) {}
 
@@ -157,7 +159,9 @@ export class TeamManager {
       // searchable in this device's local vector store.
       await this.indexArticles(result.changed);
       const lastResult = { uploaded: result.uploaded, downloaded: result.downloaded, conflicts: result.conflicts.length };
-      this.suppressUntil = Date.now() + 6000; // ignore the watcher echo from files we just wrote
+      this.lastVersion.set(wsId, result.version);
+      this.localDirty = false;
+      this.suppressUntil = Date.now() + 8000; // ignore the watcher echo from files we just wrote
       this.set({ syncing: false, lastSync: Date.now(), lastResult });
       return lastResult;
     } catch (e) {
@@ -177,7 +181,12 @@ export class TeamManager {
       workspacePath: dir,
       includeProjects: true,
       debounceMs: 4000,
-      onChanged: () => void this.scheduleSync("local"),
+      onChanged: () => {
+        // Ignore the echo from files a sync itself just wrote.
+        if (Date.now() < this.suppressUntil) return;
+        this.localDirty = true;
+        void this.scheduleSync("local");
+      },
       onError: (e) => console.error("[team] watcher:", e),
     });
     this.watcher.start();
@@ -192,11 +201,21 @@ export class TeamManager {
 
   /** Background sync trigger (watcher or poll); non-fatal, never overlapping. */
   private async scheduleSync(reason: "local" | "poll"): Promise<void> {
-    if (this.state.status !== "connected" || !this.state.workspaceId) return;
+    if (this.state.status !== "connected" || !this.state.workspaceId || !this.backend) return;
     if (this.state.syncing) return;
-    // A local change right after a sync is almost always the echo of the files
-    // the sync just wrote — ignore it (the poll still catches real edits).
-    if (reason === "local" && Date.now() < this.suppressUntil) return;
+    const wsId = this.state.workspaceId;
+
+    // Idle poll: do a tiny version check first. If the remote head hasn't moved
+    // and we have no pending local edits, there's nothing to do — exit in ms,
+    // no walk, no full manifest. (Mirrors the Drive engine's delta fast-path.)
+    if (reason === "poll" && !this.localDirty) {
+      try {
+        const v = await this.backend.getVersion(wsId);
+        if (v === this.lastVersion.get(wsId)) return;
+      } catch {
+        return; // offline — skip this tick
+      }
+    }
     try { await this.syncNow(); } catch { /* background sync errors are non-fatal */ }
   }
 

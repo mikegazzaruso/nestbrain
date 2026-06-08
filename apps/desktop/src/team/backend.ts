@@ -64,6 +64,11 @@ export class TeamBackend implements SyncBackend {
     return this.json(`/ws/${workspaceId}/manifest`);
   }
 
+  /** Cheap head-version poll: returns the current manifest version only. */
+  getVersion(workspaceId: string): Promise<number> {
+    return this.json(`/ws/${workspaceId}/version`).then((d) => d.version as number);
+  }
+
   async putBlob(workspaceId: string, hash: string, bytes: Uint8Array): Promise<void> {
     const res = await fetch(`${this.baseUrl}/ws/${workspaceId}/blob/${hash}`, {
       method: "PUT",
