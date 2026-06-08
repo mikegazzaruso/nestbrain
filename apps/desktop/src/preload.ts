@@ -108,6 +108,24 @@ contextBridge.exposeInMainWorld("nestbrain", {
     },
   },
 
+  team: {
+    getState: (): Promise<unknown> => ipcRenderer.invoke("nestbrain:team:getState"),
+    connect: (serverUrl: string, email: string, password: string): Promise<void> =>
+      ipcRenderer.invoke("nestbrain:team:connect", serverUrl, email, password),
+    disconnect: (): Promise<void> => ipcRenderer.invoke("nestbrain:team:disconnect"),
+    listMembers: (): Promise<unknown> => ipcRenderer.invoke("nestbrain:team:listMembers"),
+    addMember: (m: { email: string; name: string; password: string; role: string }): Promise<unknown> =>
+      ipcRenderer.invoke("nestbrain:team:addMember", m),
+    removeMember: (id: string): Promise<unknown> => ipcRenderer.invoke("nestbrain:team:removeMember", id),
+    selectWorkspace: (id: string): Promise<void> => ipcRenderer.invoke("nestbrain:team:selectWorkspace", id),
+    syncNow: (): Promise<unknown> => ipcRenderer.invoke("nestbrain:team:syncNow"),
+    onStateChanged: (callback: (state: unknown) => void) => {
+      const handler = (_e: unknown, state: unknown) => callback(state);
+      ipcRenderer.on("nestbrain:team:stateChanged", handler);
+      return () => ipcRenderer.off("nestbrain:team:stateChanged", handler);
+    },
+  },
+
   // Resolve a renderer-side File object to its absolute filesystem path.
   // Used by drag-drop into the terminal — Electron 32+ removed File.path
   // so we go through webUtils, which the preload can call but the

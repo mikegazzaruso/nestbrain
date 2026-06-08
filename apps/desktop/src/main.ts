@@ -37,6 +37,7 @@ try {
 import { execFileSync, execSync, spawn } from "node:child_process";
 import { AuthManager } from "./auth";
 import { SyncManager } from "./sync";
+import { TeamManager } from "./team";
 
 // On macOS, packaged Electron apps don't inherit the user's shell PATH —
 // they get a minimal PATH like /usr/bin:/bin which doesn't include common
@@ -91,6 +92,7 @@ let currentPort: number | null = null;
 let lastServerOutput = "";
 let authManager: AuthManager | null = null;
 let syncManager: SyncManager | null = null;
+let teamManager: TeamManager | null = null;
 
 const NESTBRAIN_SUBDIRS = [
   "Business",
@@ -1050,6 +1052,40 @@ ipcMain.handle("nestbrain:sync:hardDelete", async (_e, relPath: string) => {
   await syncManager.hardDelete(relPath);
 });
 
+// ====== Team Knowledge (Enterprise) ======
+
+ipcMain.handle("nestbrain:team:getState", () => {
+  return teamManager?.getState() ?? { status: "disconnected", syncing: false };
+});
+ipcMain.handle("nestbrain:team:connect", async (_e, serverUrl: string, email: string, password: string) => {
+  if (!teamManager) throw new Error("Team not initialized");
+  await teamManager.connect(serverUrl, email, password);
+});
+ipcMain.handle("nestbrain:team:disconnect", async () => {
+  if (!teamManager) return;
+  await teamManager.disconnect();
+});
+ipcMain.handle("nestbrain:team:listMembers", async () => {
+  if (!teamManager) throw new Error("Team not initialized");
+  return teamManager.listMembers();
+});
+ipcMain.handle("nestbrain:team:addMember", async (_e, m: { email: string; name: string; password: string; role: string }) => {
+  if (!teamManager) throw new Error("Team not initialized");
+  return teamManager.addMember(m);
+});
+ipcMain.handle("nestbrain:team:removeMember", async (_e, id: string) => {
+  if (!teamManager) throw new Error("Team not initialized");
+  return teamManager.removeMember(id);
+});
+ipcMain.handle("nestbrain:team:selectWorkspace", async (_e, id: string) => {
+  if (!teamManager) throw new Error("Team not initialized");
+  await teamManager.selectWorkspace(id);
+});
+ipcMain.handle("nestbrain:team:syncNow", async () => {
+  if (!teamManager) throw new Error("Team not initialized");
+  return teamManager.syncNow();
+});
+
 // ====== Git status for the file tree ======
 
 /**
@@ -1512,6 +1548,22 @@ app.whenReady().then(async () => {
     }
   });
   await syncManager.init();
+
+  // Team Knowledge (Enterprise) — independent of Google auth; restores a
+  // persisted session (token in keychain) and syncs Library/Knowledge against
+  // a self-hosted Team Server.
+  teamManager = new TeamManager({
+    getWorkspacePath: () => {
+      const b = readBootstrap();
+      return b.nestBrainPath ?? null;
+    },
+  });
+  teamManager.onChange((state) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("nestbrain:team:stateChanged", state);
+    }
+  });
+  await teamManager.init();
 
   try {
     if (!isDev) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Users,
   Loader2,
@@ -11,102 +11,72 @@ import {
   Trash2,
   UserPlus,
   ShieldCheck,
+  RefreshCw,
+  ArrowUpDown,
 } from "lucide-react";
-import {
-  health,
-  login,
-  logout,
-  isLoggedIn,
-  teamUrl,
-  setServerUrl,
-  listWorkspaces,
-  listMembers,
-  addMember,
-  removeMember,
-  TeamError,
-  type TeamWorkspace,
-  type TeamMember,
-  type TeamLicense,
-} from "@/lib/team";
-
-type Phase = "connect" | "login" | "ready";
 
 export function TeamSection() {
-  const [phase, setPhase] = useState<Phase>("connect");
+  const [state, setState] = useState<TeamState | null>(null);
+  const [supported, setSupported] = useState(true);
+  const [members, setMembers] = useState<TeamMember[]>([]);
+
+  // connect form
   const [url, setUrl] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const [license, setLicense] = useState<TeamLicense | null>(null);
-  const [workspaces, setWorkspaces] = useState<TeamWorkspace[]>([]);
-  const [members, setMembers] = useState<TeamMember[]>([]);
-  const [me, setMe] = useState<{ email: string; role: string } | null>(null);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    const saved = teamUrl();
-    if (saved) setUrl(saved);
-    if (isLoggedIn()) {
-      setPhase("ready");
-      void refresh();
+    if (typeof window === "undefined" || !window.nestbrain?.team) {
+      setSupported(false);
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    window.nestbrain.team.getState().then(setState).catch(() => {});
+    const off = window.nestbrain.team.onStateChanged((s) => setState(s));
+    return () => off?.();
   }, []);
 
-  async function refresh() {
-    setError(null);
-    try {
-      const [h, ws, mem] = await Promise.all([health(teamUrl()), listWorkspaces(), listMembers()]);
-      setLicense(h.license);
-      setWorkspaces(ws);
-      setMembers(mem);
-      setPhase("ready");
-    } catch (e) {
-      if (e instanceof TeamError && e.status === 401) {
-        handleLogout();
-      } else {
-        setError(e instanceof Error ? e.message : "failed to load");
-      }
-    }
-  }
+  const loadMembers = useCallback(async () => {
+    if (!window.nestbrain?.team) return;
+    try { setMembers(await window.nestbrain.team.listMembers()); } catch { /* ignore */ }
+  }, []);
 
-  async function handleConnect() {
+  useEffect(() => {
+    if (state?.status === "connected") {
+      loadMembers();
+      if (!url && state.serverUrl) setUrl(state.serverUrl);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.status]);
+
+  if (!supported) return null;
+
+  async function connect() {
     setBusy(true);
     setError(null);
     try {
-      const clean = url.trim().replace(/\/$/, "");
-      const h = await health(clean);
-      setServerUrl(clean);
-      setLicense(h.license);
-      setPhase("login");
-    } catch {
-      setError("Could not reach a Team Server at that address.");
-    }
-    setBusy(false);
-  }
-
-  async function handleLogin() {
-    setBusy(true);
-    setError(null);
-    try {
-      const { user } = await login(email.trim(), password);
-      setMe({ email: user.email, role: user.role });
+      await window.nestbrain!.team.connect(url.trim(), email.trim(), password);
       setPassword("");
-      await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "login failed");
+      setError(e instanceof Error ? e.message : "connection failed");
     }
     setBusy(false);
   }
 
-  function handleLogout() {
-    logout();
-    setMembers([]);
-    setWorkspaces([]);
-    setMe(null);
-    setPhase("login");
+  async function syncNow() {
+    setSyncMsg(null);
+    setError(null);
+    try {
+      const r = await window.nestbrain!.team.syncNow();
+      if (r) setSyncMsg(`↑${r.uploaded} ↓${r.downloaded}${r.conflicts ? ` · ${r.conflicts} conflict(s)` : ""}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "sync failed");
+    }
   }
+
+  const connected = state?.status === "connected";
 
   return (
     <section className="mb-10">
@@ -118,108 +88,94 @@ export function TeamSection() {
       </h2>
 
       <div className="p-5 rounded-xl bg-card border border-border space-y-4">
-        {phase === "connect" && (
+        {!connected ? (
           <>
             <p className="text-[12px] text-muted/60 leading-relaxed">
-              Share your knowledge base with your team on a server you control. Enter your
-              company&apos;s NestBrain Team Server address to get started.
+              Share your knowledge base with your team on a server you control. Connect to your
+              company&apos;s NestBrain Team Server.
             </p>
             <div>
               <label className="block text-xs text-muted/70 mb-2">Team Server URL</label>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Server size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted/40" />
-                  <input
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                    placeholder="https://team.acme.com"
-                    className="w-full pl-9 pr-3 py-2.5 bg-background border border-border rounded-lg text-sm font-mono text-foreground placeholder:text-muted/30 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20"
-                  />
-                </div>
-                <button
-                  onClick={handleConnect}
-                  disabled={busy || !url.trim()}
-                  className="px-4 py-2.5 bg-accent text-background text-sm font-medium rounded-lg hover:bg-accent-hover transition-colors disabled:opacity-40 flex items-center gap-2"
-                >
-                  {busy && <Loader2 size={13} className="animate-spin" />}
-                  Connect
-                </button>
+              <div className="relative">
+                <Server size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted/40" />
+                <input
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="https://team.acme.com"
+                  className="w-full pl-9 pr-3 py-2.5 bg-background border border-border rounded-lg text-sm font-mono text-foreground placeholder:text-muted/30 focus:outline-none focus:border-accent/50"
+                />
               </div>
             </div>
-          </>
-        )}
-
-        {phase === "login" && (
-          <>
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-muted/60 font-mono truncate">{teamUrl()}</span>
-              <button onClick={() => setPhase("connect")} className="text-[11px] text-muted/50 hover:text-foreground">
-                change
-              </button>
-            </div>
-            {license && <LicenseBadge license={license} />}
             <div className="grid grid-cols-2 gap-2">
-              <input
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@acme.com"
-                className="px-3 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-muted/30 focus:outline-none focus:border-accent/50"
-              />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-                placeholder="password"
-                className="px-3 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-muted/30 focus:outline-none focus:border-accent/50"
-              />
+              <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@acme.com" className="px-3 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:border-accent/50" />
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && connect()} placeholder="password" className="px-3 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:border-accent/50" />
             </div>
             <button
-              onClick={handleLogin}
-              disabled={busy || !email.trim() || !password}
+              onClick={connect}
+              disabled={busy || !url.trim() || !email.trim() || !password}
               className="px-5 py-2 bg-accent text-background text-sm font-medium rounded-lg hover:bg-accent-hover transition-colors disabled:opacity-40 flex items-center gap-2"
             >
               {busy && <Loader2 size={13} className="animate-spin" />}
-              Sign in
+              Connect
             </button>
           </>
-        )}
-
-        {phase === "ready" && (
+        ) : (
           <>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-xs text-green-400/90">
                 <span className="w-2 h-2 rounded-full bg-green-400" />
-                Connected · <span className="font-mono text-muted/60">{teamUrl()}</span>
+                Connected · <span className="font-mono text-muted/60">{state?.serverUrl}</span>
               </div>
-              <button onClick={handleLogout} className="flex items-center gap-1.5 text-[11px] text-muted/50 hover:text-red-400 transition-colors">
+              <button
+                onClick={() => window.nestbrain?.team.disconnect()}
+                className="flex items-center gap-1.5 text-[11px] text-muted/50 hover:text-red-400 transition-colors"
+              >
                 <LogOut size={12} /> Sign out
               </button>
             </div>
-            {license && <LicenseBadge license={license} usedSeats={members.length} />}
 
+            {state?.license && <LicenseBadge license={state.license} usedSeats={members.length} />}
+
+            {/* Workspaces */}
             <div>
-              <p className="text-[11px] text-muted/50 uppercase tracking-wider mb-2">Workspaces</p>
-              <div className="space-y-1">
-                {workspaces.map((w) => (
-                  <div key={w.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-background border border-border text-sm">
-                    <Users size={13} className="text-accent/60" />
-                    {w.name}
-                  </div>
-                ))}
+              <p className="text-[11px] text-muted/50 uppercase tracking-wider mb-2">Workspace</p>
+              {(state?.workspaces ?? []).length > 1 ? (
+                <select
+                  value={state?.workspaceId ?? ""}
+                  onChange={(e) => window.nestbrain?.team.selectWorkspace(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:border-accent/50"
+                >
+                  {state?.workspaces?.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                </select>
+              ) : (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-background border border-border text-sm">
+                  <Users size={13} className="text-accent/60" />
+                  {state?.workspaces?.[0]?.name ?? "—"}
+                </div>
+              )}
+            </div>
+
+            {/* Sync */}
+            <div className="flex items-center justify-between gap-3 pt-1">
+              <div className="text-[11px] text-muted/50 min-w-0 truncate">
+                {state?.syncing ? "Syncing…" : syncMsg ? <span className="text-green-400/80">{syncMsg}</span> : state?.lastSync ? `Last sync ${new Date(state.lastSync).toLocaleTimeString()}` : "Not synced yet"}
               </div>
+              <button
+                onClick={syncNow}
+                disabled={state?.syncing}
+                className="flex items-center gap-2 px-4 py-2 bg-accent text-background text-sm font-medium rounded-lg hover:bg-accent-hover transition-colors disabled:opacity-40 shrink-0"
+                title="Sync Library/Knowledge with the team workspace"
+              >
+                {state?.syncing ? <Loader2 size={14} className="animate-spin" /> : <ArrowUpDown size={14} />}
+                Sync now
+              </button>
             </div>
 
             <MembersBlock
               members={members}
-              isAdmin={me?.role === "admin" || members.some((m) => m.role === "admin")}
-              onChanged={refresh}
+              isAdmin={state?.user?.role === "admin" || members.some((m) => m.role === "admin")}
+              onChanged={loadMembers}
             />
-
-            <p className="text-[11px] text-muted/40 leading-relaxed pt-1 border-t border-border/50">
-              Content sync of your <code className="text-accent/60 bg-accent/5 px-1 rounded">Library/Knowledge</code> with this
-              team workspace is wired next.
-            </p>
           </>
         )}
 
@@ -233,7 +189,7 @@ export function TeamSection() {
   );
 }
 
-function LicenseBadge({ license, usedSeats }: { license: TeamLicense; usedSeats?: number }) {
+function LicenseBadge({ license, usedSeats }: { license: NonNullable<TeamState["license"]>; usedSeats?: number }) {
   return (
     <div className="flex items-center gap-2 text-[11px] text-muted/70 bg-background border border-border rounded-lg px-3 py-2">
       <ShieldCheck size={13} className={license.dev ? "text-amber-400" : "text-green-400"} />
@@ -264,12 +220,12 @@ function MembersBlock({
     setBusy(true);
     setErr(null);
     try {
-      await addMember({ ...form, email: form.email.trim(), role: "member" });
+      await window.nestbrain!.team.addMember({ ...form, email: form.email.trim(), role: "member" });
       setForm({ email: "", name: "", password: "" });
       setAdding(false);
       onChanged();
     } catch (e) {
-      setErr(e instanceof TeamError && e.status === 402 ? e.message : e instanceof Error ? e.message : "failed");
+      setErr(e instanceof Error ? e.message : "failed");
     }
     setBusy(false);
   }
@@ -278,11 +234,14 @@ function MembersBlock({
     <div>
       <div className="flex items-center justify-between mb-2">
         <p className="text-[11px] text-muted/50 uppercase tracking-wider">Members ({members.length})</p>
-        {isAdmin && !adding && (
-          <button onClick={() => setAdding(true)} className="flex items-center gap-1 text-[11px] text-accent hover:text-accent-hover">
-            <UserPlus size={12} /> Add
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          <button onClick={onChanged} className="text-muted/40 hover:text-foreground" title="Refresh"><RefreshCw size={12} /></button>
+          {isAdmin && !adding && (
+            <button onClick={() => setAdding(true)} className="flex items-center gap-1 text-[11px] text-accent hover:text-accent-hover">
+              <UserPlus size={12} /> Add
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="space-y-1">
@@ -295,7 +254,7 @@ function MembersBlock({
             {m.role === "admin" && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-300">admin</span>}
             {isAdmin && m.role !== "admin" && (
               <button
-                onClick={async () => { await removeMember(m.id); onChanged(); }}
+                onClick={async () => { await window.nestbrain!.team.removeMember(m.id); onChanged(); }}
                 className="opacity-0 group-hover:opacity-100 text-muted/40 hover:text-red-400 transition-all"
                 title="Remove member"
               >

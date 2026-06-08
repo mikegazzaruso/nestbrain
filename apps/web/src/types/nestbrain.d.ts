@@ -20,6 +20,27 @@ interface CreateTerminalResult {
 }
 
 declare global {
+  interface TeamMember {
+    id: string;
+    email: string;
+    name: string;
+    role: string;
+    created_at?: string;
+  }
+
+  interface TeamState {
+    status: "disconnected" | "connecting" | "connected" | "error";
+    serverUrl?: string;
+    user?: { email: string; name: string; role: string };
+    license?: { org: string; seats: number; exp: number | null; dev: boolean };
+    workspaceId?: string;
+    workspaces?: { id: string; name: string }[];
+    syncing: boolean;
+    lastSync?: number;
+    lastResult?: { uploaded: number; downloaded: number; conflicts: number };
+    error?: string;
+  }
+
   interface Window {
     nestbrain?: {
       isElectron: true;
@@ -74,6 +95,17 @@ declare global {
         softDelete: (relPath: string) => Promise<void>;
         hardDelete: (relPath: string) => Promise<void>;
         onStateChanged: (callback: (state: SyncState) => void) => () => void;
+      };
+      team: {
+        getState: () => Promise<TeamState>;
+        connect: (serverUrl: string, email: string, password: string) => Promise<void>;
+        disconnect: () => Promise<void>;
+        listMembers: () => Promise<TeamMember[]>;
+        addMember: (m: { email: string; name: string; password: string; role: string }) => Promise<unknown>;
+        removeMember: (id: string) => Promise<unknown>;
+        selectWorkspace: (id: string) => Promise<void>;
+        syncNow: () => Promise<{ uploaded: number; downloaded: number; conflicts: number } | undefined>;
+        onStateChanged: (callback: (state: TeamState) => void) => () => void;
       };
       terminal: {
         create: (opts: { cwd: string; cols?: number; rows?: number }) => Promise<CreateTerminalResult>;
