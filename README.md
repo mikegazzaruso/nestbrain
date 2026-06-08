@@ -2,7 +2,7 @@
 
 **Your AI-powered second brain, packaged as a native workspace for people who actually build things.** Raw sources go in, a structured Markdown wiki comes out — compiled, linked, and maintained entirely by AI. Inside a full integrated workspace with a VS Code-style editor, a real terminal, and deep **Claude Code** integration that finally makes your LLM remember what you were doing yesterday.
 
-![NestBrain](https://img.shields.io/badge/status-v1.6.0-brightgreen) ![TypeScript](https://img.shields.io/badge/TypeScript-100%25-blue) ![License](https://img.shields.io/badge/license-GPL--3.0-blue) ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)
+![NestBrain](https://img.shields.io/badge/status-v1.7.0-brightgreen) ![TypeScript](https://img.shields.io/badge/TypeScript-100%25-blue) ![License](https://img.shields.io/badge/license-GPL--3.0-blue) ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)
 
 🌐 **Website**: [nestbrain.app](https://nestbrain.app)
 
@@ -10,26 +10,23 @@
 
 ---
 
-## Get NestBrain
+## Get NestBrain — three tiers
 
-NestBrain is **free and open source** under GPL-3.0. You can clone this repo and build the app from source yourself, at no cost, forever.
+NestBrain's core is **free and open source** under GPL-3.0 — clone this repo and build it yourself, at no cost, forever. Want it pre-built? The official signed binaries are a one-time **$29**. Teams who want to **share one knowledge base across the company, on their own server**, get the **Enterprise** tier.
 
-If you just want to **download, install, and start using it**, the **official signed binaries** are available as a one-time $29 license at **[nestbrain.app](https://nestbrain.app)** — the same app, pre-built and notarized, zero setup, directly funding continued development.
+| | **Free** — build from source | **⭐ $29** — Supporter | **🏢 Enterprise** — for teams |
+|---|---|---|---|
+| **Price** | $0 | **$29 one-time. Forever.** | Per-seat subscription — **[contact us](https://nestbrain.app)** |
+| **Where** | This GitHub repo | [nestbrain.app](https://nestbrain.app) | [nestbrain.app](https://nestbrain.app) → Enterprise |
+| **App** | Build it yourself (~5 min, Node 20 + pnpm) | Signed & notarized, **30-second install** | Signed binaries for the whole team |
+| **Source code** | ✅ Full GPL-3.0 | ✅ Same GPL-3.0 | GPL app + proprietary Team Server |
+| **Everything below** | ✅ | ✅ | ✅ |
+| **Multi-device sync** (your own Drive) | ✅ | ✅ | ✅ |
+| **Team Knowledge Sharing** | ❌ | ❌ | ✅ **the killer feature** |
+| **Updates** | `git pull && pnpm desktop:build` | Direct download, forever | Included |
+| **Support** | Community (GitHub issues) | Priority email | Priority + onboarding / SLA |
 
-| | Free — Build from source | **⭐ Supporter License — $29** |
-|---|---|---|
-| **Price** | $0 | **$29 one-time. Forever.** |
-| **Where** | This GitHub repo | [nestbrain.app](https://nestbrain.app) |
-| **Source code** | ✅ Full GPL-3.0 source | ✅ Same GPL-3.0 source |
-| **Features** | ✅ Everything below | ✅ Everything below |
-| **Install time** | ~5 minutes (Node 20 + pnpm required) | **30 seconds — just open the DMG** |
-| **Signed & notarized** | ❌ You have to strip quarantine manually | ✅ **Apple Developer ID signed + notarized** — opens cleanly on first launch |
-| **Windows installer** | Build it yourself | ✅ **NSIS installer ready to run** |
-| **Multi-device sync** | ✅ Via your own Google Drive | ✅ Via your own Google Drive |
-| **Updates** | `git pull && pnpm desktop:build` | ✅ **Direct download from your account, forever** |
-| **Support** | Community (GitHub issues) | ✅ Priority email support |
-
-Both paths get you the **exact same product**. If you're comfortable running `pnpm install && pnpm desktop:package:mac`, you can have it for free in ~5 minutes. If you'd rather spend that time actually using the thing — and want to support an indie developer shipping quality software — buy the license at **[nestbrain.app](https://nestbrain.app)**. It's the same $29 you'd spend on two coffees, and it pays for weeks of continued work.
+**Free** and **$29** get the *exact same app* — the $29 just buys the signed binary, zero-setup install, and supports continued development. **Enterprise** adds **Team Knowledge Sharing**: each member compiles knowledge locally and the **compiled wiki syncs in real time across the team** on a **server you host** (your VPS / private server — your data, your infrastructure), with members, seats and licensing managed centrally. → **[Talk to us about Enterprise](https://nestbrain.app)**.
 
 ---
 
@@ -142,6 +139,18 @@ The whole thing is opt-in, per-device, and refuses to lose data:
 - **Optional `Projects/`.** Your code projects can be excluded with one toggle. `node_modules`, `.git`, `dist`, `.next`, and friends are always excluded.
 
 The full architecture — manifest format, conflict semantics, the `drive.file` trade-off, known limits — lives in [`docs/SYNC.md`](docs/SYNC.md).
+
+### 🏢 Team Knowledge Sharing — *Enterprise*
+Drive sync keeps **you** in step across your own devices. **Team Knowledge Sharing** keeps a **whole team** in step on a **server you control**.
+
+Each member compiles knowledge locally — the expensive AI work happens once, per person — and the resulting **structured wiki** (`Library/Knowledge/`) syncs in real time to a self-hosted **Team Server** on your company's VPS or private server. A teammate's compiled articles show up in *your* file tree, wiki, search and Mind Map — **no re-compiling, no re-paying the LLM cost**. Conflicts keep both versions (`*.conflict-…`), and incoming articles are re-indexed locally so search and Ask find them.
+
+- **Your server, your data.** Self-hosted on infrastructure you own — full data sovereignty. (Content is encrypted in transit + at rest; end-to-end zero-knowledge is on the roadmap.)
+- **Admin console in the app.** Provision the first admin, manage members and seats, watch sync status — right from Settings → Team Knowledge.
+- **Seat-based licensing.** Members and seats are enforced by a signed license; your subscription is validated centrally with offline grace (your server never holds your data hostage).
+- **Same app, no separate build.** Everyone uses the normal NestBrain app and connects to your Team Server; the feature is gated by the license, not a different binary.
+
+The GPL app ships the open client interface; the Team Server and licensing control-plane are the proprietary Enterprise components. → **[Talk to us about Enterprise](https://nestbrain.app)**.
 
 ### 🔒 Local-first, with optional sync — no cloud lock-in
 All your data lives in `NestBrain/` on your disk. No account required to use the app. No telemetry. No vendor lock-in. You can quit NestBrain tomorrow and your knowledge base is still right there, in Markdown, usable by any other tool that understands `.md` files. If you want a NestBrain on a second machine, sign in with Google and turn on sync — your files stay on your devices and inside *your* Drive, never on a NestBrain server.
