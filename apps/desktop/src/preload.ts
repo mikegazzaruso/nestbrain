@@ -32,6 +32,15 @@ contextBridge.exposeInMainWorld("nestbrain", {
 
   getBootstrap: () => ipcRenderer.invoke("nestbrain:getBootstrap"),
   selectDirectory: () => ipcRenderer.invoke("nestbrain:selectDirectory"),
+
+  projects: {
+    import: (): Promise<{ projectPath: string; name: string } | null> =>
+      ipcRenderer.invoke("nestbrain:projects:import"),
+    makeReady: (projectPath: string): Promise<{ ready: boolean }> =>
+      ipcRenderer.invoke("nestbrain:projects:makeReady", projectPath),
+    status: (projectPath: string): Promise<{ ready: boolean }> =>
+      ipcRenderer.invoke("nestbrain:projects:status", projectPath),
+  },
   setupNestBrain: (parentPath: string) =>
     ipcRenderer.invoke("nestbrain:setupNestBrain", parentPath),
   moveOrCreateNestBrain: (parentPath: string) =>

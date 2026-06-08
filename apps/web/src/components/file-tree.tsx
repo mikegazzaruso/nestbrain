@@ -16,6 +16,8 @@ import {
   Cloud,
   GitBranch,
   ArrowRight,
+  FolderInput,
+  Sparkles,
 } from "lucide-react";
 import { useSync } from "@/lib/sync-context";
 import { FileIcon } from "./file-icon";
@@ -94,6 +96,42 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
   );
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+
+  // Import an external folder into Projects/ and make it knowledge-ready.
+  const importProject = useCallback(async () => {
+    if (!window.nestbrain?.projects) return;
+    try {
+      const res = await window.nestbrain.projects.import();
+      if (res) {
+        setExpanded((s) => new Set(s).add(`${rootPath}/Projects`));
+        refresh();
+      }
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "Import failed");
+    }
+  }, [refresh, rootPath]);
+
+  // A directory that's a direct child of Projects/ (a project root).
+  const isProjectDir = useCallback(
+    (p: string): boolean => {
+      const norm = p.replace(/\\/g, "/");
+      const base = `${rootPath.replace(/\\/g, "/")}/Projects/`;
+      if (!norm.startsWith(base)) return false;
+      const rest = norm.slice(base.length);
+      return rest.length > 0 && !rest.includes("/");
+    },
+    [rootPath],
+  );
+
+  async function handleMakeReady(targetPath: string) {
+    if (!window.nestbrain?.projects) return;
+    try {
+      await window.nestbrain.projects.makeReady(targetPath);
+      window.alert("Project is now knowledge-ready — commits will feed the knowledge base.");
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "Failed to make knowledge-ready");
+    }
+  }
 
   // Auto refresh when window gains focus
   useEffect(() => {
@@ -293,6 +331,14 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
             className="shrink-0 text-muted/30 -translate-x-1 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 group-hover:text-accent/70 transition-all"
           />
         </button>
+        <button
+          onClick={importProject}
+          title="Import an existing folder into Projects — made knowledge-ready automatically"
+          className="mt-1.5 w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-[11px] text-muted/70 hover:text-foreground hover:bg-card border border-transparent hover:border-border transition-colors"
+        >
+          <FolderInput size={12} className="shrink-0 text-muted/50" />
+          <span className="truncate">Import project…</span>
+        </button>
       </div>
 
       <div className="px-4 py-2 flex items-center justify-between">
@@ -332,7 +378,6 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
 
       <div className="max-h-[300px] overflow-y-auto pb-2 pr-1">
         <TreeNode
-          key={refreshKey}
           path={rootPath}
           name="NestBrain"
           depth={0}
@@ -346,6 +391,7 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
           selectedPath={selectedPath}
           isDir
           isRoot
+          refreshKey={refreshKey}
         />
       </div>
 
@@ -377,6 +423,15 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
                   const { path, name, isDir } = contextMenu;
                   setContextMenu(null);
                   handleHardDelete(path, name, isDir);
+                }
+              : undefined
+          }
+          onMakeReady={
+            contextMenu.isDir && isProjectDir(contextMenu.path)
+              ? () => {
+                  const { path } = contextMenu;
+                  setContextMenu(null);
+                  handleMakeReady(path);
                 }
               : undefined
           }
@@ -491,6 +546,7 @@ interface ContextMenuProps {
   onRename: () => void;
   onDelete: () => void;
   onHardDelete?: () => void;
+  onMakeReady?: () => void;
   syncEnabled: boolean;
 }
 
@@ -501,6 +557,7 @@ function ContextMenu({
   onRename,
   onDelete,
   onHardDelete,
+  onMakeReady,
   syncEnabled,
 }: ContextMenuProps) {
   // Clamp within viewport so it doesn't clip on the right/bottom
@@ -521,6 +578,16 @@ function ContextMenu({
             icon={<ExternalLink size={12} />}
             label="Open"
             onClick={onOpen}
+          />
+          <div className="my-1 h-px bg-border/60" />
+        </>
+      )}
+      {onMakeReady && (
+        <>
+          <MenuItem
+            icon={<Sparkles size={12} />}
+            label="Make knowledge-ready"
+            onClick={onMakeReady}
           />
           <div className="my-1 h-px bg-border/60" />
         </>
@@ -718,6 +785,9 @@ interface TreeNodeProps {
   selectedPath: string | null;
   isDir: boolean;
   isRoot?: boolean;
+  /** Bumped to force open folders to re-read their children in place
+   *  (without remounting the tree — that caused the visible flash). */
+  refreshKey: number;
 }
 
 function TreeNode({
@@ -734,6 +804,7 @@ function TreeNode({
   selectedPath,
   isDir,
   isRoot,
+  refreshKey,
 }: TreeNodeProps) {
   const isOpen = expanded.has(path);
   const isSelected = selectedPath === path;
@@ -795,12 +866,14 @@ function TreeNode({
     if (typeof window === "undefined" || !window.nestbrain) return;
     let cancelled = false;
     window.nestbrain.fs.list(path).then((list) => {
+      // Update children in place — React reconciles by entry.path, so
+      // unchanged rows don't remount (no flash) and open folders stay open.
       if (!cancelled) setChildren(list);
     });
     return () => {
       cancelled = true;
     };
-  }, [isOpen, path, isDir]);
+  }, [isOpen, path, isDir, refreshKey]);
 
   const indent = depth * 10;
 
@@ -920,6 +993,7 @@ function TreeNode({
               renamingPath={renamingPath}
               selectedPath={selectedPath}
               isDir={entry.isDirectory}
+              refreshKey={refreshKey}
             />
           ))}
           {children.length === 0 && (

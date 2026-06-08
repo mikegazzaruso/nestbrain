@@ -51,6 +51,11 @@ declare global {
         platform: NodeJS.Platform;
       }>;
       selectDirectory: () => Promise<string | null>;
+      projects: {
+        import: () => Promise<{ projectPath: string; name: string } | null>;
+        makeReady: (projectPath: string) => Promise<{ ready: boolean }>;
+        status: (projectPath: string) => Promise<{ ready: boolean }>;
+      };
       setupNestBrain: (parentPath: string) => Promise<{ nestBrainPath: string }>;
       moveOrCreateNestBrain: (
         parentPath: string,
