@@ -157,8 +157,15 @@ export function TeamSection() {
 
             {/* Sync */}
             <div className="flex items-center justify-between gap-3 pt-1">
-              <div className="text-[11px] text-muted/50 min-w-0 truncate">
-                {state?.syncing ? "Syncing…" : syncMsg ? <span className="text-green-400/80">{syncMsg}</span> : state?.lastSync ? `Last sync ${new Date(state.lastSync).toLocaleTimeString()}` : "Not synced yet"}
+              <div className="text-[11px] text-muted/50 min-w-0 truncate flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400/70 shrink-0" title="Auto-sync on" />
+                {state?.syncing
+                  ? "Syncing…"
+                  : syncMsg
+                    ? <span className="text-green-400/80">{syncMsg}</span>
+                    : state?.lastSync
+                      ? `Auto-sync on · last ${new Date(state.lastSync).toLocaleTimeString()}`
+                      : "Auto-sync on"}
               </div>
               <button
                 onClick={syncNow}

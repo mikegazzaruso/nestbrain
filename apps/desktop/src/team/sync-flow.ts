@@ -74,6 +74,12 @@ export async function runSync(
     const remote = await backend.getManifest(workspaceId);
     const actions = diffFiles(cur, local, remote.files);
 
+    // Nothing differs between local and remote → don't churn a new manifest
+    // version (important for the idle background poll). Adopt remote as base.
+    if (actions.length === 0) {
+      return { version: remote.version, base: remote.files, conflicts: [], uploaded: 0, downloaded: 0, changed: [] };
+    }
+
     const newFiles: FileMap = {};
     const conflicts: string[] = [];
     const changed: string[] = [];

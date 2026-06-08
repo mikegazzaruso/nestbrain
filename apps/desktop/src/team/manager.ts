@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
-import type { RemoteWorkspace } from "@nestbrain/sync";
+import { existsSync, mkdirSync } from "node:fs";
+import { WorkspaceWatcher, type RemoteWorkspace } from "@nestbrain/sync";
 import {
   TeamBackend,
   TeamError,
@@ -40,6 +41,13 @@ export class TeamManager {
   private listeners = new Set<Listener>();
   private backend: TeamBackend | null = null;
 
+  // Auto-sync: a debounced filesystem watcher pushes local edits, a poll timer
+  // pulls teammates' changes. `suppressUntil` ignores the watcher echo from the
+  // files a sync itself just wrote.
+  private watcher: WorkspaceWatcher | null = null;
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private suppressUntil = 0;
+
   constructor(private opts: TeamManagerOptions) {}
 
   getState(): TeamState {
@@ -71,6 +79,8 @@ export class TeamManager {
     } catch {
       /* offline — stay connected, hydrate on demand */
     }
+    this.startAutoSync();
+    void this.scheduleSync("poll");
   }
 
   async connect(serverUrl: string, email: string, password: string): Promise<void> {
@@ -87,6 +97,8 @@ export class TeamManager {
       cfg.workspaceId = workspaceId;
       await saveConfig(cfg);
       this.set({ status: "connected", serverUrl: url, user, license: h.license, workspaces: ws, workspaceId, error: undefined });
+      this.startAutoSync();
+      void this.scheduleSync("poll");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "connection failed";
       this.set({ status: "error", error: msg });
@@ -95,6 +107,7 @@ export class TeamManager {
   }
 
   async disconnect(): Promise<void> {
+    this.stopAutoSync();
     await clearToken();
     await saveConfig({}); // forget server + selected workspace + bases
     this.backend = null;
@@ -144,12 +157,47 @@ export class TeamManager {
       // searchable in this device's local vector store.
       await this.indexArticles(result.changed);
       const lastResult = { uploaded: result.uploaded, downloaded: result.downloaded, conflicts: result.conflicts.length };
+      this.suppressUntil = Date.now() + 6000; // ignore the watcher echo from files we just wrote
       this.set({ syncing: false, lastSync: Date.now(), lastResult });
       return lastResult;
     } catch (e) {
       this.set({ syncing: false, error: e instanceof Error ? e.message : "sync failed" });
       throw e;
     }
+  }
+
+  // ── Auto-sync ──────────────────────────────────────────────────────
+  private startAutoSync(): void {
+    this.stopAutoSync();
+    const root = this.opts.getWorkspacePath();
+    if (!root) return;
+    const dir = join(root, "Library", "Knowledge");
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    this.watcher = new WorkspaceWatcher({
+      workspacePath: dir,
+      includeProjects: true,
+      debounceMs: 4000,
+      onChanged: () => void this.scheduleSync("local"),
+      onError: (e) => console.error("[team] watcher:", e),
+    });
+    this.watcher.start();
+    // Periodic pull so teammates' changes arrive without a local edit.
+    this.pollTimer = setInterval(() => void this.scheduleSync("poll"), 60_000);
+  }
+
+  private stopAutoSync(): void {
+    if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
+    if (this.watcher) { void this.watcher.stop(); this.watcher = null; }
+  }
+
+  /** Background sync trigger (watcher or poll); non-fatal, never overlapping. */
+  private async scheduleSync(reason: "local" | "poll"): Promise<void> {
+    if (this.state.status !== "connected" || !this.state.workspaceId) return;
+    if (this.state.syncing) return;
+    // A local change right after a sync is almost always the echo of the files
+    // the sync just wrote — ignore it (the poll still catches real edits).
+    if (reason === "local" && Date.now() < this.suppressUntil) return;
+    try { await this.syncNow(); } catch { /* background sync errors are non-fatal */ }
   }
 
   /** Ask the embedded web server to embed synced articles into the local index. */
