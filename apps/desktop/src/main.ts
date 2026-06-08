@@ -1557,6 +1557,7 @@ app.whenReady().then(async () => {
       const b = readBootstrap();
       return b.nestBrainPath ?? null;
     },
+    getServerUrl: () => serverUrl,
   });
   teamManager.onChange((state) => {
     if (mainWindow && !mainWindow.isDestroyed()) {

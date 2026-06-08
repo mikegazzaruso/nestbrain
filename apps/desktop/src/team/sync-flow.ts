@@ -7,7 +7,10 @@ import { diffFiles, type FileMap, type SyncBackend } from "@nestbrain/sync";
 // local wiki folder, diff base/local/remote, transfer blobs, write keep-both
 // conflict siblings, and commit with optimistic-concurrency retry on 409.
 
-const IGNORE = new Set([".git", "node_modules", ".nestbrain", ".obsidian"]);
+// `vector-index.json` is the per-device LOCAL embeddings index — it must never
+// be shared (it's rebuilt locally from the synced articles, and it's large/
+// churny). Everything else under Library/Knowledge is structured wiki content.
+const IGNORE = new Set([".git", "node_modules", ".nestbrain", ".obsidian", "vector-index.json"]);
 
 export async function walkLocal(dir: string, root = dir, out: FileMap = {}): Promise<FileMap> {
   let entries;
@@ -40,6 +43,9 @@ export interface SyncResult {
   conflicts: string[];
   uploaded: number;
   downloaded: number;
+  /** Local article paths written this sync (downloads + conflict siblings) —
+   *  the ones that need (re)indexing into the local vector store. */
+  changed: string[];
 }
 
 function conflictName(path: string): string {
@@ -70,6 +76,7 @@ export async function runSync(
 
     const newFiles: FileMap = {};
     const conflicts: string[] = [];
+    const changed: string[] = [];
     let uploaded = 0;
     let downloaded = 0;
 
@@ -88,6 +95,7 @@ export async function runSync(
         await writeLocalFile(dir, p, await backend.getBlob(workspaceId, entry.hash));
         downloaded++;
         newFiles[p] = entry;
+        changed.push(p);
       } else if (a.action === "keep-both") {
         await backend.putBlob(workspaceId, local[p].hash, await readFile(join(dir, p)));
         uploaded++;
@@ -98,6 +106,7 @@ export async function runSync(
         downloaded++;
         newFiles[cpath] = rentry;
         conflicts.push(cpath);
+        changed.push(cpath);
       } else if (a.action === "delete-local") {
         await rm(join(dir, p), { force: true });
       }
@@ -106,7 +115,7 @@ export async function runSync(
 
     const res = await backend.commit(workspaceId, remote.version, newFiles);
     if (res.ok) {
-      return { version: res.manifest.version, base: newFiles, conflicts, uploaded, downloaded };
+      return { version: res.manifest.version, base: newFiles, conflicts, uploaded, downloaded, changed };
     }
     cur = newFiles; // a peer committed first — adopt our merge as base and retry
   }

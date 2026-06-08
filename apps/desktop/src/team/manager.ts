@@ -31,6 +31,8 @@ type Listener = (state: TeamState) => void;
 export interface TeamManagerOptions {
   /** Returns the NestBrain workspace root (the folder containing Library/). */
   getWorkspacePath: () => string | null;
+  /** Base URL of the embedded Next server, for indexing synced articles. */
+  getServerUrl: () => string | null;
 }
 
 export class TeamManager {
@@ -138,12 +140,33 @@ export class TeamManager {
       const result = await runSync(backend, wsId, dir, base);
       cfg.bases = { ...(cfg.bases ?? {}), [wsId]: result.base };
       await saveConfig(cfg);
+      // Re-index articles that arrived from teammates so they become
+      // searchable in this device's local vector store.
+      await this.indexArticles(result.changed);
       const lastResult = { uploaded: result.uploaded, downloaded: result.downloaded, conflicts: result.conflicts.length };
       this.set({ syncing: false, lastSync: Date.now(), lastResult });
       return lastResult;
     } catch (e) {
       this.set({ syncing: false, error: e instanceof Error ? e.message : "sync failed" });
       throw e;
+    }
+  }
+
+  /** Ask the embedded web server to embed synced articles into the local index. */
+  private async indexArticles(paths: string[]): Promise<void> {
+    if (paths.length === 0) return;
+    const server = this.opts.getServerUrl();
+    if (!server) return;
+    // Index relative to the wiki dir (Library/Knowledge), matching the server's wikiPath.
+    const rel = paths.map((p) => p.replace(/^Library\/Knowledge\//, ""));
+    try {
+      await fetch(`${server.replace(/\/$/, "")}/api/wiki/index`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paths: rel }),
+      });
+    } catch {
+      /* indexing is best-effort; the articles are on disk regardless */
     }
   }
 }
