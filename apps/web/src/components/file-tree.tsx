@@ -313,15 +313,15 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
 
   return (
     <div className="flex-shrink-0 border-b border-sidebar-border">
-      {/* New Project CTA — clean & neat (Linear / Vercel-ish) */}
-      <div className="px-3 pt-3 pb-2">
+      {/* New / Import — one row, New project emphasized */}
+      <div className="px-3 pt-3 pb-2 flex items-stretch gap-1.5">
         <button
           onClick={onNewProject}
           title="Create a new project in NestBrain/Projects"
-          className="group w-full flex items-center justify-between gap-2 px-3 py-2 rounded-md text-[12px] text-foreground/85 bg-card hover:bg-card-hover border border-border hover:border-accent/40 transition-colors"
+          className="group flex-1 min-w-0 flex items-center justify-between gap-2 px-3 py-2 rounded-md text-[12px] font-medium text-foreground/90 bg-card hover:bg-card-hover border border-border hover:border-accent/40 transition-colors"
         >
           <span className="flex items-center gap-2 min-w-0">
-            <span className="flex items-center justify-center w-5 h-5 rounded-md bg-accent/10 text-accent group-hover:bg-accent/15 transition-colors">
+            <span className="flex items-center justify-center w-5 h-5 rounded-md bg-accent/15 text-accent group-hover:bg-accent/20 transition-colors">
               <Plus size={12} strokeWidth={2.5} />
             </span>
             <span className="truncate">New project</span>
@@ -334,10 +334,10 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
         <button
           onClick={importProject}
           title="Import an existing folder into Projects — made knowledge-ready automatically"
-          className="mt-1.5 w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-[11px] text-muted/70 hover:text-foreground hover:bg-card border border-transparent hover:border-border transition-colors"
+          className="shrink-0 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] text-muted/70 hover:text-foreground bg-card/50 hover:bg-card border border-border/60 hover:border-border transition-colors"
         >
           <FolderInput size={12} className="shrink-0 text-muted/50" />
-          <span className="truncate">Import project…</span>
+          <span>Import</span>
         </button>
       </div>
 
