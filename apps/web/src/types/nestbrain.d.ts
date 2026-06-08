@@ -99,6 +99,7 @@ declare global {
       team: {
         getState: () => Promise<TeamState>;
         connect: (serverUrl: string, email: string, password: string) => Promise<void>;
+        setup: (serverUrl: string, token: string, email: string, password: string, name?: string) => Promise<void>;
         disconnect: () => Promise<void>;
         listMembers: () => Promise<TeamMember[]>;
         addMember: (m: { email: string; name: string; password: string; role: string }) => Promise<unknown>;

@@ -27,6 +27,9 @@ export function TeamSection() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  // First-run provisioning of a fresh server.
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [token, setToken] = useState("");
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.nestbrain?.team) {
@@ -60,7 +63,23 @@ export function TeamSection() {
       await window.nestbrain!.team.connect(url.trim(), email.trim(), password);
       setPassword("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "connection failed");
+      const msg = e instanceof Error ? e.message : "connection failed";
+      if (msg === "NEEDS_SETUP") setNeedsSetup(true); // fresh server → provision first admin
+      else setError(msg);
+    }
+    setBusy(false);
+  }
+
+  async function doSetup() {
+    setBusy(true);
+    setError(null);
+    try {
+      await window.nestbrain!.team.setup(url.trim(), token.trim(), email.trim(), password);
+      setPassword("");
+      setToken("");
+      setNeedsSetup(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "setup failed");
     }
     setBusy(false);
   }
@@ -106,17 +125,30 @@ export function TeamSection() {
                 />
               </div>
             </div>
+            {needsSetup && (
+              <p className="text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 leading-relaxed">
+                Fresh server — create the first admin. Paste the <b>setup token</b> printed in the server logs.
+              </p>
+            )}
+            {needsSetup && (
+              <input
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder="setup token"
+                className="w-full px-3 py-2.5 bg-background border border-border rounded-lg text-sm font-mono focus:outline-none focus:border-accent/50"
+              />
+            )}
             <div className="grid grid-cols-2 gap-2">
-              <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@acme.com" className="px-3 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:border-accent/50" />
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && connect()} placeholder="password" className="px-3 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:border-accent/50" />
+              <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder={needsSetup ? "admin email" : "you@acme.com"} className="px-3 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:border-accent/50" />
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (needsSetup ? doSetup() : connect())} placeholder={needsSetup ? "admin password" : "password"} className="px-3 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:border-accent/50" />
             </div>
             <button
-              onClick={connect}
-              disabled={busy || !url.trim() || !email.trim() || !password}
+              onClick={needsSetup ? doSetup : connect}
+              disabled={busy || !url.trim() || !email.trim() || !password || (needsSetup && !token.trim())}
               className="px-5 py-2 bg-accent text-background text-sm font-medium rounded-lg hover:bg-accent-hover transition-colors disabled:opacity-40 flex items-center gap-2"
             >
               {busy && <Loader2 size={13} className="animate-spin" />}
-              Connect
+              {needsSetup ? "Create admin & connect" : "Connect"}
             </button>
           </>
         ) : (

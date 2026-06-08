@@ -1061,6 +1061,10 @@ ipcMain.handle("nestbrain:team:connect", async (_e, serverUrl: string, email: st
   if (!teamManager) throw new Error("Team not initialized");
   await teamManager.connect(serverUrl, email, password);
 });
+ipcMain.handle("nestbrain:team:setup", async (_e, serverUrl: string, token: string, email: string, password: string, name?: string) => {
+  if (!teamManager) throw new Error("Team not initialized");
+  await teamManager.setup(serverUrl, token, email, password, name);
+});
 ipcMain.handle("nestbrain:team:disconnect", async () => {
   if (!teamManager) return;
   await teamManager.disconnect();

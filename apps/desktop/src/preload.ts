@@ -112,6 +112,8 @@ contextBridge.exposeInMainWorld("nestbrain", {
     getState: (): Promise<unknown> => ipcRenderer.invoke("nestbrain:team:getState"),
     connect: (serverUrl: string, email: string, password: string): Promise<void> =>
       ipcRenderer.invoke("nestbrain:team:connect", serverUrl, email, password),
+    setup: (serverUrl: string, token: string, email: string, password: string, name?: string): Promise<void> =>
+      ipcRenderer.invoke("nestbrain:team:setup", serverUrl, token, email, password, name),
     disconnect: (): Promise<void> => ipcRenderer.invoke("nestbrain:team:disconnect"),
     listMembers: (): Promise<unknown> => ipcRenderer.invoke("nestbrain:team:listMembers"),
     addMember: (m: { email: string; name: string; password: string; role: string }): Promise<unknown> =>

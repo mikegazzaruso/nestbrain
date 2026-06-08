@@ -85,8 +85,37 @@ export class TeamManager {
     void this.scheduleSync("poll");
   }
 
+  /** True if the server is fresh and needs its first admin provisioned. */
+  async needsSetup(serverUrl: string): Promise<boolean> {
+    try {
+      const res = await fetch(serverUrl.replace(/\/$/, "") + "/setup/status");
+      if (!res.ok) return false;
+      return ((await res.json()) as { needsSetup?: boolean }).needsSetup === true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Provision the first admin on a fresh server, then connect. */
+  async setup(serverUrl: string, token: string, email: string, password: string, name?: string): Promise<void> {
+    const url = serverUrl.replace(/\/$/, "");
+    const res = await fetch(url + "/setup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, email, password, name }),
+    });
+    if (!res.ok) {
+      const d = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(d.error ?? `setup failed (${res.status})`);
+    }
+    await this.connect(url, email, password);
+  }
+
   async connect(serverUrl: string, email: string, password: string): Promise<void> {
     const url = serverUrl.replace(/\/$/, "");
+    if (await this.needsSetup(url)) {
+      throw new Error("NEEDS_SETUP");
+    }
     this.set({ status: "connecting", error: undefined });
     try {
       const { token, user } = await teamLogin(url, email, password);
