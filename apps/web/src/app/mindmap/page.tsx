@@ -315,6 +315,11 @@ export default function MindMapPage() {
   // Per-cluster expansion 0→1, eased every frame.
   const expansion = useRef<number[]>([]);
   const activeCluster = useRef(-1);
+  // A cluster pinned open by the locate/search box (stays expanded until the
+  // user clicks empty space).
+  const pinnedCluster = useRef(-1);
+  const [query, setQuery] = useState("");
+  const [notFound, setNotFound] = useState(false);
 
   // Animated display positions for hit-testing, keyed by node id.
   const displayPos = useRef<Map<string, { x: number; y: number; r: number; alpha: number; cluster: number }>>(new Map());
@@ -441,8 +446,9 @@ export default function MindMapPage() {
     }
     const active = activeCluster.current;
 
+    const pinned = pinnedCluster.current;
     for (const c of clusters) {
-      const target = c.collapsible ? (c.index === active ? 1 : 0) : 1;
+      const target = c.collapsible ? (c.index === active || c.index === pinned ? 1 : 0) : 1;
       const cur = expansion.current[c.index] ?? 0;
       let next = cur + (target - cur) * 0.16;
       if (Math.abs(next - target) < 0.002) next = target;
@@ -687,6 +693,7 @@ export default function MindMapPage() {
           else setSelectedNode(n.id);
         } else {
           setSelectedNode(null);
+          pinnedCluster.current = -1; // clicking empty space un-pins a located cluster
         }
       }
     }
@@ -724,12 +731,64 @@ export default function MindMapPage() {
     }
   }, []);
 
+  // Auto-refresh the graph after a Team sync brings new articles in.
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.nestbrain?.team) return;
+    let lastSync = 0;
+    const off = window.nestbrain.team.onStateChanged((s) => {
+      const t = (s as { lastSync?: number })?.lastSync ?? 0;
+      if (t && t !== lastSync) { lastSync = t; loadGraph(); }
+    });
+    return () => off?.();
+  }, [loadGraph]);
+
+  // Find a concept and reveal it: expand its macro cluster, select it, and
+  // centre the view on it. Solves "I synced/have X but can't find it".
+  function locate(q: string) {
+    const term = q.trim().toLowerCase();
+    if (!term) return;
+    const nodes = layoutRef.current.nodes;
+    const hit =
+      nodes.find((n) => n.label.toLowerCase() === term || n.id.toLowerCase() === term) ??
+      nodes.find((n) => n.label.toLowerCase().includes(term) || n.id.toLowerCase().includes(term));
+    if (!hit) { setNotFound(true); return; }
+    setNotFound(false);
+    setSelectedNode(hit.id);
+    pinnedCluster.current = hit.clusterIndex;
+    // Centre on the node's exploded position.
+    const z = Math.max(zoom.current, 1.1);
+    zoom.current = z;
+    pan.current = { x: -hit.ex * z, y: -hit.ey * z };
+  }
+
   return (
     <div className="flex-1 flex flex-col">
-      <div className="h-12 border-b border-border flex items-center justify-between px-6 shrink-0">
-        <h1 className="text-sm font-medium">Mind Map</h1>
-        <div className="flex items-center gap-5">
-          <span className="text-[11px] text-muted/30">{graphData.nodes.length} nodes · {graphData.links.length} connections</span>
+      <div className="h-12 border-b border-border flex items-center justify-between px-6 shrink-0 gap-4">
+        <h1 className="text-sm font-medium shrink-0">Mind Map</h1>
+        <div className="flex items-center gap-3 flex-1 justify-end">
+          <div className="relative w-56 max-w-[40vw]">
+            <input
+              value={query}
+              onChange={(e) => { setQuery(e.target.value); setNotFound(false); }}
+              onKeyDown={(e) => { if (e.key === "Enter") locate(query); }}
+              placeholder="Find a concept…"
+              className={`w-full px-3 py-1.5 bg-card border rounded-lg text-xs text-foreground placeholder:text-muted/40 focus:outline-none focus:border-accent/50 ${notFound ? "border-red-500/50" : "border-border"}`}
+            />
+            {notFound && <span className="absolute -bottom-4 left-1 text-[10px] text-red-400/80">not found</span>}
+          </div>
+          <button
+            onClick={() => locate(query)}
+            className="text-[11px] text-muted/60 hover:text-foreground transition-colors shrink-0"
+            title="Locate"
+          >Locate</button>
+          <button
+            onClick={() => loadGraph()}
+            className="text-muted/50 hover:text-foreground transition-colors shrink-0"
+            title="Refresh graph from disk"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+          </button>
+          <span className="text-[11px] text-muted/30 shrink-0">{graphData.nodes.length} nodes · {graphData.links.length} connections</span>
         </div>
       </div>
 
