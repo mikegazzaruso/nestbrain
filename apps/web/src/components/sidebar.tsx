@@ -77,6 +77,9 @@ export function Sidebar() {
       }
       const projectPath = `${nestBrainPath}/Projects/${projectName}`;
       await window.nestbrain.fs.createDir(projectPath);
+      // Make it knowledge-ready (git init + post-commit hook) so commits feed
+      // the knowledge base from the start. Best-effort — don't block opening.
+      try { await window.nestbrain.projects.makeReady(projectPath); } catch { /* ignore */ }
       await openTerminal(projectPath, projectName);
       // Trigger file tree refresh via focus event
       window.dispatchEvent(new Event("focus"));

@@ -9,3 +9,15 @@ export type { Manifest, ManifestFileEntry, WalkEntry } from "./types";
 export { buildExcludes } from "./excludes";
 export { walk } from "./walker";
 export { hashFile } from "./hash";
+// Open-core seam: the pluggable remote-backend contract + pure reconcile
+// logic. The proprietary Enterprise "Team Server" adapter implements this.
+export { diffFiles } from "./backend";
+export type {
+  SyncBackend,
+  RemoteManifest,
+  RemoteFileEntry,
+  RemoteWorkspace,
+  FileMap,
+  CommitResult,
+  SyncAction,
+} from "./backend";

@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { SyncAccountSection } from "@/components/sync-account-section";
 import { CliInstallSection } from "@/components/cli-install-section";
+import { TeamSection } from "@/components/team-section";
 
 interface OpenAIModel {
   id: string;
@@ -180,6 +181,8 @@ export default function SettingsPage() {
         </div>
 
         <SyncAccountSection />
+
+        <TeamSection />
 
         {/* LLM Provider */}
         <section className="mb-10">

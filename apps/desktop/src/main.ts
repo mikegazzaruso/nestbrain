@@ -9,7 +9,7 @@ import {
   UtilityProcess,
 } from "electron";
 import { createServer } from "node:net";
-import { join, dirname, resolve, sep } from "node:path";
+import { join, dirname, resolve, sep, basename } from "node:path";
 import {
   existsSync,
   mkdirSync,
@@ -37,6 +37,7 @@ try {
 import { execFileSync, execSync, spawn } from "node:child_process";
 import { AuthManager } from "./auth";
 import { SyncManager } from "./sync";
+import { TeamManager } from "./team";
 
 // On macOS, packaged Electron apps don't inherit the user's shell PATH —
 // they get a minimal PATH like /usr/bin:/bin which doesn't include common
@@ -91,6 +92,7 @@ let currentPort: number | null = null;
 let lastServerOutput = "";
 let authManager: AuthManager | null = null;
 let syncManager: SyncManager | null = null;
+let teamManager: TeamManager | null = null;
 
 const NESTBRAIN_SUBDIRS = [
   "Business",
@@ -404,6 +406,82 @@ ipcMain.handle("nestbrain:selectDirectory", async () => {
   });
   if (result.canceled || result.filePaths.length === 0) return null;
   return result.filePaths[0];
+});
+
+// ====== Project knowledge-readiness ======
+// A project is "knowledge-ready" when the post-commit hook is installed (every
+// commit then auto-extracts knowledge atoms). We make a project ready by
+// git-init'ing it if needed and running `nestbrain projects register` via the
+// bundled CLI — no @nestbrain/core import in the main bundle.
+
+function isKnowledgeReady(projectPath: string): boolean {
+  try {
+    const hook = join(projectPath, ".git", "hooks", "post-commit");
+    return existsSync(hook) && readFileSync(hook, "utf-8").includes("nestbrain-knowledge-hook");
+  } catch {
+    return false;
+  }
+}
+
+/** Command the installed hook should invoke at commit time. */
+function hookCliCommand(): string {
+  const target = cliInstallTarget();
+  if (target && existsSync(target)) return "nestbrain"; // installed on PATH → survives moves
+  return cliWrapperSource(); // bundled wrapper (absolute path)
+}
+
+/** Run the bundled (or PATH) nestbrain CLI. */
+function runNestbrainCli(args: string[]): void {
+  let onPath = false;
+  try {
+    execSync(process.platform === "win32" ? "where nestbrain" : "command -v nestbrain", { stdio: "ignore" });
+    onPath = true;
+  } catch {
+    /* not on PATH */
+  }
+  const cmd = onPath ? "nestbrain" : cliWrapperSource();
+  execFileSync(cmd, args, { stdio: "ignore", timeout: 60_000, shell: process.platform === "win32" });
+}
+
+function makeProjectKnowledgeReady(projectPath: string): void {
+  if (!existsSync(join(projectPath, ".git"))) {
+    execFileSync("git", ["-C", projectPath, "init"], { stdio: "ignore", timeout: 15_000 });
+  }
+  runNestbrainCli(["projects", "register", "--repo", projectPath, "--cli", hookCliCommand()]);
+}
+
+ipcMain.handle("nestbrain:projects:status", (_e, projectPath: string) => {
+  if (typeof projectPath !== "string" || !projectPath) return { ready: false };
+  return { ready: isKnowledgeReady(projectPath) };
+});
+
+ipcMain.handle("nestbrain:projects:makeReady", async (_e, projectPath: string) => {
+  if (typeof projectPath !== "string" || !projectPath) throw new Error("invalid path");
+  makeProjectKnowledgeReady(projectPath);
+  return { ready: true };
+});
+
+// Pick an external folder and import it into NestBrain/Projects (excluding
+// build dirs), then make it knowledge-ready.
+ipcMain.handle("nestbrain:projects:import", async () => {
+  if (!mainWindow) return null;
+  const b = readBootstrap();
+  if (!b.nestBrainPath) throw new Error("NestBrain workspace not set");
+  const res = await dialog.showOpenDialog(mainWindow, {
+    title: "Import a project into NestBrain",
+    properties: ["openDirectory"],
+    buttonLabel: "Import",
+  });
+  if (res.canceled || res.filePaths.length === 0) return null;
+  const src = res.filePaths[0];
+  const name = basename(src);
+  let dest = join(b.nestBrainPath, "Projects", name);
+  let i = 2;
+  while (existsSync(dest)) dest = join(b.nestBrainPath, "Projects", `${name}-${i++}`);
+  const SKIP = new Set(["node_modules", ".next", "dist", "build", ".turbo", ".DS_Store"]);
+  cpSync(src, dest, { recursive: true, filter: (s) => !SKIP.has(basename(s)) });
+  makeProjectKnowledgeReady(dest);
+  return { projectPath: dest, name: basename(dest) };
 });
 
 // === Terminal (PTY) session management ===
@@ -825,7 +903,7 @@ function killAllPtySessions(): void {
 // in-process so the IPC channel stays quiet.
 let fsWatcher: FSWatcher | null = null;
 let fsWatchDebounce: NodeJS.Timeout | null = null;
-const FS_WATCH_DEBOUNCE_MS = 500;
+const FS_WATCH_DEBOUNCE_MS = 1200;
 
 function shouldIgnoreFsChange(filename: string | null): boolean {
   if (!filename) return false;
@@ -843,6 +921,9 @@ function shouldIgnoreFsChange(filename: string | null): boolean {
   // Noise files
   const base = f.split("/").pop() || "";
   if (base === ".DS_Store" || base === "Thumbs.db") return true;
+  // The local vector index is rewritten on every (team) compile/index — large
+  // and irrelevant to the tree; ignoring it kills a big source of churn.
+  if (base === "vector-index.json") return true;
   if (
     base.endsWith(".swp") ||
     base.endsWith(".swx") ||
@@ -1048,6 +1129,44 @@ ipcMain.handle("nestbrain:sync:hardDelete", async (_e, relPath: string) => {
   if (!syncManager) throw new Error("Sync not initialized");
   if (typeof relPath !== "string" || relPath === "") throw new Error("Invalid path");
   await syncManager.hardDelete(relPath);
+});
+
+// ====== Team Knowledge (Enterprise) ======
+
+ipcMain.handle("nestbrain:team:getState", () => {
+  return teamManager?.getState() ?? { status: "disconnected", syncing: false };
+});
+ipcMain.handle("nestbrain:team:connect", async (_e, serverUrl: string, email: string, password: string) => {
+  if (!teamManager) throw new Error("Team not initialized");
+  await teamManager.connect(serverUrl, email, password);
+});
+ipcMain.handle("nestbrain:team:setup", async (_e, serverUrl: string, token: string, email: string, password: string, name?: string) => {
+  if (!teamManager) throw new Error("Team not initialized");
+  await teamManager.setup(serverUrl, token, email, password, name);
+});
+ipcMain.handle("nestbrain:team:disconnect", async () => {
+  if (!teamManager) return;
+  await teamManager.disconnect();
+});
+ipcMain.handle("nestbrain:team:listMembers", async () => {
+  if (!teamManager) throw new Error("Team not initialized");
+  return teamManager.listMembers();
+});
+ipcMain.handle("nestbrain:team:addMember", async (_e, m: { email: string; name: string; password: string; role: string }) => {
+  if (!teamManager) throw new Error("Team not initialized");
+  return teamManager.addMember(m);
+});
+ipcMain.handle("nestbrain:team:removeMember", async (_e, id: string) => {
+  if (!teamManager) throw new Error("Team not initialized");
+  return teamManager.removeMember(id);
+});
+ipcMain.handle("nestbrain:team:selectWorkspace", async (_e, id: string) => {
+  if (!teamManager) throw new Error("Team not initialized");
+  await teamManager.selectWorkspace(id);
+});
+ipcMain.handle("nestbrain:team:syncNow", async () => {
+  if (!teamManager) throw new Error("Team not initialized");
+  return teamManager.syncNow();
 });
 
 // ====== Git status for the file tree ======
@@ -1512,6 +1631,23 @@ app.whenReady().then(async () => {
     }
   });
   await syncManager.init();
+
+  // Team Knowledge (Enterprise) — independent of Google auth; restores a
+  // persisted session (token in keychain) and syncs Library/Knowledge against
+  // a self-hosted Team Server.
+  teamManager = new TeamManager({
+    getWorkspacePath: () => {
+      const b = readBootstrap();
+      return b.nestBrainPath ?? null;
+    },
+    getServerUrl: () => serverUrl,
+  });
+  teamManager.onChange((state) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("nestbrain:team:stateChanged", state);
+    }
+  });
+  await teamManager.init();
 
   try {
     if (!isDev) {
