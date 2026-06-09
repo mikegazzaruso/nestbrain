@@ -1686,3 +1686,22 @@ app.on("before-quit", () => {
   stopNestBrainWatcher();
   killNextServer();
 });
+
+// The sync + team managers own chokidar watchers whose macOS fsevents backend
+// must be closed BEFORE Node tears down, or it fires into a freed N-API
+// threadsafe function and aborts (SIGABRT) on quit. Defer the quit once while we
+// await their disposal. Cross-platform safe (a no-op cost on Windows/Linux).
+let watchersDisposed = false;
+app.on("will-quit", (event) => {
+  if (watchersDisposed) return;
+  event.preventDefault();
+  shuttingDown = true;
+  void (async () => {
+    try {
+      await Promise.allSettled([syncManager?.dispose(), teamManager?.dispose()]);
+    } finally {
+      watchersDisposed = true;
+      app.quit();
+    }
+  })();
+});

@@ -157,7 +157,11 @@ export class SyncManager {
 
   async dispose(): Promise<void> {
     this.cancel();
-    this.stopBackgroundLoops();
+    this.stopPullTimer();
+    this.stopReconcileTimer();
+    // AWAIT the chokidar close: on quit the fsevents backend must be torn down
+    // before Node frees the N-API threadsafe function, or it aborts (SIGABRT).
+    await this.stopWatcher();
   }
 
   // ---------- internals ----------

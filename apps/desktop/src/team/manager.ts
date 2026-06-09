@@ -245,6 +245,19 @@ export class TeamManager {
     this.watchers = [];
   }
 
+  /**
+   * Tear down for app quit: AWAIT every watcher's close so chokidar's fsevents
+   * backend (macOS) is gone before Node frees the N-API threadsafe function —
+   * otherwise it fires into freed memory and aborts (SIGABRT). Harmless and
+   * correct on every platform.
+   */
+  async dispose(): Promise<void> {
+    if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
+    const ws = this.watchers;
+    this.watchers = [];
+    await Promise.allSettled(ws.map((w) => w.stop()));
+  }
+
   /** Background sync trigger (watcher or poll); non-fatal, never overlapping. */
   private async scheduleSync(reason: "local" | "poll"): Promise<void> {
     if (this.state.status !== "connected" || !this.state.workspaceId || !this.backend) return;
