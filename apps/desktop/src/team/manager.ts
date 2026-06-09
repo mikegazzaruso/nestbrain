@@ -11,7 +11,7 @@ import {
   type TeamLicense,
   type TeamMember,
 } from "./backend.js";
-import { runSync } from "./sync-flow.js";
+import { runSync, type SyncRoot } from "./sync-flow.js";
 import { loadConfig, saveConfig, loadToken, saveToken, clearToken } from "./store.js";
 
 export interface TeamState {
@@ -44,7 +44,7 @@ export class TeamManager {
   // Auto-sync: a debounced filesystem watcher pushes local edits, a poll timer
   // pulls teammates' changes. `suppressUntil` ignores the watcher echo from the
   // files a sync itself just wrote.
-  private watcher: WorkspaceWatcher | null = null;
+  private watchers: WorkspaceWatcher[] = [];
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private suppressUntil = 0;
   private localDirty = false;
@@ -167,21 +167,34 @@ export class TeamManager {
     this.set({ workspaceId: id });
   }
 
-  /** Sync Library/Knowledge ↔ the selected team workspace. */
+  /**
+   * The two trees the team shares, in one workspace:
+   *  - Library/Knowledge → the compiled wiki (prefix "", indexed for search)
+   *  - Team/             → shared team notes (prefix "Team/", NOT indexed)
+   * Team notes sync like any file but never enter the knowledge vector store.
+   */
+  private syncRoots(root: string): SyncRoot[] {
+    return [
+      { dir: join(root, "Library", "Knowledge"), prefix: "", index: true },
+      { dir: join(root, "Team"), prefix: "Team/", index: false },
+    ];
+  }
+
+  /** Sync Library/Knowledge + Team/ ↔ the selected team workspace. */
   async syncNow(): Promise<TeamState["lastResult"]> {
     const backend = this.require();
     const wsId = this.state.workspaceId;
     if (!wsId) throw new Error("no workspace selected");
     const root = this.opts.getWorkspacePath();
     if (!root) throw new Error("no NestBrain workspace open");
-    const dir = join(root, "Library", "Knowledge");
-    await mkdir(dir, { recursive: true });
+    const roots = this.syncRoots(root);
+    for (const r of roots) await mkdir(r.dir, { recursive: true });
 
     this.set({ syncing: true, error: undefined });
     try {
       const cfg = await loadConfig();
       const base = cfg.bases?.[wsId] ?? {};
-      const result = await runSync(backend, wsId, dir, base);
+      const result = await runSync(backend, wsId, roots, base);
       cfg.bases = { ...(cfg.bases ?? {}), [wsId]: result.base };
       await saveConfig(cfg);
       // Re-index articles that arrived from teammates so they become
@@ -204,28 +217,32 @@ export class TeamManager {
     this.stopAutoSync();
     const root = this.opts.getWorkspacePath();
     if (!root) return;
-    const dir = join(root, "Library", "Knowledge");
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    this.watcher = new WorkspaceWatcher({
-      workspacePath: dir,
-      includeProjects: true,
-      debounceMs: 4000,
-      onChanged: () => {
-        // Ignore the echo from files a sync itself just wrote.
-        if (Date.now() < this.suppressUntil) return;
-        this.localDirty = true;
-        void this.scheduleSync("local");
-      },
-      onError: (e) => console.error("[team] watcher:", e),
-    });
-    this.watcher.start();
+    // One watcher per shared tree (Library/Knowledge + Team/).
+    for (const r of this.syncRoots(root)) {
+      if (!existsSync(r.dir)) mkdirSync(r.dir, { recursive: true });
+      const w = new WorkspaceWatcher({
+        workspacePath: r.dir,
+        includeProjects: true,
+        debounceMs: 4000,
+        onChanged: () => {
+          // Ignore the echo from files a sync itself just wrote.
+          if (Date.now() < this.suppressUntil) return;
+          this.localDirty = true;
+          void this.scheduleSync("local");
+        },
+        onError: (e) => console.error("[team] watcher:", e),
+      });
+      w.start();
+      this.watchers.push(w);
+    }
     // Periodic pull so teammates' changes arrive without a local edit.
     this.pollTimer = setInterval(() => void this.scheduleSync("poll"), 60_000);
   }
 
   private stopAutoSync(): void {
     if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
-    if (this.watcher) { void this.watcher.stop(); this.watcher = null; }
+    for (const w of this.watchers) void w.stop();
+    this.watchers = [];
   }
 
   /** Background sync trigger (watcher or poll); non-fatal, never overlapping. */
@@ -250,11 +267,14 @@ export class TeamManager {
 
   /** Ask the embedded web server to embed synced articles into the local index. */
   private async indexArticles(paths: string[]): Promise<void> {
-    if (paths.length === 0) return;
+    // Team/ notes sync but are never embedded into the knowledge vector store —
+    // only the wiki (prefix "") is indexed.
+    const wiki = paths.filter((p) => !p.startsWith("Team/"));
+    if (wiki.length === 0) return;
     const server = this.opts.getServerUrl();
     if (!server) return;
     // Index relative to the wiki dir (Library/Knowledge), matching the server's wikiPath.
-    const rel = paths.map((p) => p.replace(/^Library\/Knowledge\//, ""));
+    const rel = wiki.map((p) => p.replace(/^Library\/Knowledge\//, ""));
     try {
       await fetch(`${server.replace(/\/$/, "")}/api/wiki/index`, {
         method: "POST",
