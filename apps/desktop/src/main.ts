@@ -345,6 +345,10 @@ function createWindow(): void {
       nodeIntegration: false,
       sandbox: true,
       preload: join(__dirname, "preload.js"),
+      // Don't pause/throttle the renderer when the window loses focus or is
+      // occluded — that throttling (combined with a GPU compositor hiccup) is
+      // what left the window black-on-return until a manual restart.
+      backgroundThrottling: false,
     },
   });
 
@@ -356,6 +360,20 @@ function createWindow(): void {
     shell.openExternal(url);
     return { action: "deny" };
   });
+
+  // Auto-recover instead of leaving a black window the user must force-restart:
+  // a renderer crash / OOM, or an unresponsive page, reloads in place.
+  mainWindow.webContents.on("render-process-gone", (_e, details) => {
+    console.error("[renderer] process gone:", details.reason);
+    if (details.reason !== "clean-exit" && !shuttingDown) mainWindow?.reload();
+  });
+  mainWindow.webContents.on("unresponsive", () => {
+    console.warn("[renderer] unresponsive — reloading");
+    if (!shuttingDown) mainWindow?.reload();
+  });
+  // When the window regains focus after being backgrounded, force a repaint so
+  // a lost compositor surface doesn't show as black.
+  mainWindow.on("focus", () => mainWindow?.webContents.invalidate());
 
   const url = isDev ? DEV_URL : serverUrl;
   if (url) mainWindow.loadURL(url);
@@ -1704,4 +1722,14 @@ app.on("will-quit", (event) => {
       app.quit();
     }
   })();
+});
+
+// If the GPU process dies (the usual cause of a black window after sleep/
+// occlusion), reload the renderer to rebuild its compositor surface rather than
+// leaving the user staring at black until they restart.
+app.on("child-process-gone", (_e, details) => {
+  if (details.type === "GPU" && !shuttingDown) {
+    console.error("[gpu] process gone:", details.reason);
+    mainWindow?.webContents.reload();
+  }
 });
