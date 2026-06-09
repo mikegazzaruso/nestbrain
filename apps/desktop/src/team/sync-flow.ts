@@ -70,16 +70,56 @@ async function writeLocalFile(dir: string, path: string, bytes: Uint8Array): Pro
   await writeFile(full, bytes);
 }
 
+/**
+ * A local directory mapped to a server-side path prefix inside the workspace.
+ * Knowledge uses prefix "" (the existing layout, no migration); Team notes use
+ * "Team/". `index` flags whether downloaded files should be embedded into the
+ * local vector store — true for the wiki, false for plain Team notes (they
+ * sync but must never pollute knowledge/search).
+ */
+export interface SyncRoot {
+  dir: string;
+  prefix: string;
+  index: boolean;
+}
+
+/**
+ * Map a server path back to its local root + relative path. Longest non-empty
+ * prefix wins; the "" prefix is the catch-all (knowledge).
+ */
+function resolveRoot(roots: SyncRoot[], serverPath: string): { root: SyncRoot; rel: string } {
+  const ranked = [...roots].filter((r) => r.prefix !== "").sort((a, b) => b.prefix.length - a.prefix.length);
+  for (const r of ranked) {
+    if (serverPath === r.prefix || serverPath.startsWith(r.prefix)) {
+      return { root: r, rel: serverPath.slice(r.prefix.length) };
+    }
+  }
+  const fallback = roots.find((r) => r.prefix === "");
+  if (!fallback) throw new Error(`sync: no root for "${serverPath}"`);
+  return { root: fallback, rel: serverPath };
+}
+
 export async function runSync(
   backend: SyncBackend,
   workspaceId: string,
-  dir: string,
+  roots: SyncRoot[],
   base: FileMap,
   maxRetries = 5,
 ): Promise<SyncResult> {
   let cur = base;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
-    const local = await walkLocal(dir, cur); // `cur` doubles as the mtime/size→hash cache
+    // Walk every root into a single prefixed local map, reusing the matching
+    // slice of `cur` as each root's mtime/size→hash cache.
+    const local: FileMap = {};
+    for (const r of roots) {
+      const subCache: FileMap = {};
+      for (const [k, v] of Object.entries(cur)) {
+        if (resolveRoot(roots, k).root.dir === r.dir) subCache[resolveRoot(roots, k).rel] = v;
+      }
+      const sub = await walkLocal(r.dir, subCache);
+      for (const [rel, entry] of Object.entries(sub)) local[r.prefix + rel] = entry;
+    }
+
     const remote = await backend.getManifest(workspaceId);
     const actions = diffFiles(cur, local, remote.files);
 
@@ -101,29 +141,31 @@ export async function runSync(
 
     for (const a of actions) {
       const p = a.path;
+      const { root, rel } = resolveRoot(roots, p);
       if (a.action === "upload") {
-        await backend.putBlob(workspaceId, local[p].hash, await readFile(join(dir, p)));
+        await backend.putBlob(workspaceId, local[p].hash, await readFile(join(root.dir, rel)));
         uploaded++;
         newFiles[p] = local[p];
       } else if (a.action === "download") {
         const entry = remote.files[p];
-        await writeLocalFile(dir, p, await backend.getBlob(workspaceId, entry.hash));
+        await writeLocalFile(root.dir, rel, await backend.getBlob(workspaceId, entry.hash));
         downloaded++;
         newFiles[p] = entry;
         changed.push(p);
       } else if (a.action === "keep-both") {
-        await backend.putBlob(workspaceId, local[p].hash, await readFile(join(dir, p)));
+        await backend.putBlob(workspaceId, local[p].hash, await readFile(join(root.dir, rel)));
         uploaded++;
         newFiles[p] = local[p];
         const rentry = remote.files[p];
         const cpath = conflictName(p);
-        await writeLocalFile(dir, cpath, await backend.getBlob(workspaceId, rentry.hash));
+        const c = resolveRoot(roots, cpath);
+        await writeLocalFile(c.root.dir, c.rel, await backend.getBlob(workspaceId, rentry.hash));
         downloaded++;
         newFiles[cpath] = rentry;
         conflicts.push(cpath);
         changed.push(cpath);
       } else if (a.action === "delete-local") {
-        await rm(join(dir, p), { force: true });
+        await rm(join(root.dir, rel), { force: true });
       }
       // delete-remote → simply omit from newFiles
     }

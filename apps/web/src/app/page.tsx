@@ -11,6 +11,7 @@ import {
   FileText,
   Brain,
   BarChart3,
+  Library,
 } from "lucide-react";
 
 interface Stats {
@@ -56,8 +57,12 @@ export default function Home() {
 
         {/* Stats cards */}
         {hasData && (
-          <div className="grid grid-cols-5 gap-3 mb-10">
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mb-10">
             {[
+              // Articles = the actual knowledge you hold (incl. anything pulled
+              // from a team workspace). Sources counts locally-ingested raw docs,
+              // which is legitimately 0 on a device that only receives team sync.
+              { label: "Articles", value: stats.sources + stats.concepts + stats.outputs, icon: Library },
               { label: "Sources", value: stats.rawFiles, icon: Download },
               { label: "Summaries", value: stats.sources, icon: FileText },
               { label: "Concepts", value: stats.concepts, icon: Brain },
