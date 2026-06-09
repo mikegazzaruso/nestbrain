@@ -227,7 +227,10 @@ export function TeamSection() {
 
             <MembersBlock
               members={members}
-              isAdmin={state?.user?.role === "admin" || members.some((m) => m.role === "admin")}
+              // Only the CURRENT user being an admin gates add/remove — not
+              // "some member is an admin" (always true → everyone saw Add).
+              // The server also enforces this (requireAdmin on /members).
+              isAdmin={state?.user?.role === "admin"}
               onChanged={loadMembers}
             />
           </>
