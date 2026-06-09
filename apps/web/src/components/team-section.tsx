@@ -69,7 +69,9 @@ export function TeamSection() {
       setPassword("");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "connection failed";
-      if (msg === "NEEDS_SETUP") setNeedsSetup(true); // fresh server → provision first admin
+      // Electron wraps IPC errors ("Error invoking remote method '…': Error:
+      // NEEDS_SETUP"), so match the sentinel as a substring, not by equality.
+      if (msg.includes("NEEDS_SETUP")) setNeedsSetup(true); // fresh server → provision first admin
       else setError(msg);
     }
     setBusy(false);
