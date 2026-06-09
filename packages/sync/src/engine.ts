@@ -265,8 +265,14 @@ export class SyncEngine {
   // ===== PULL =====
 
   private async pull(): Promise<{ downloaded: number; conflicts: number; softDeletes: number }> {
-    const { manifest, drive } = this.opts;
+    const { manifest, drive, prefs } = this.opts;
     if (!manifest.rootFolderDriveId) return { downloaded: 0, conflicts: 0, softDeletes: 0 };
+
+    // Respect the same exclusion rules as push: a device that hasn't opted into
+    // syncing Projects/ must NOT pull Projects/ files another device uploaded.
+    // Without this, excludes only applied on upload and the pull path happily
+    // downloaded everything in the remote tree.
+    const isExcluded = buildExcludes({ includeProjects: prefs.includeProjects });
 
     // Fast path: we have a Drive page token from a previous pull. Ask Drive
     // for the delta since then — when nothing changed remotely the request
@@ -274,7 +280,7 @@ export class SyncEngine {
     // old "walk the entire Drive tree every 60s" behavior.
     if (manifest.driveChangesPageToken) {
       try {
-        return await this.pullIncremental(manifest.driveChangesPageToken);
+        return await this.pullIncremental(manifest.driveChangesPageToken, isExcluded);
       } catch (err) {
         // Tokens older than ~30 days are invalidated by Google; recover by
         // falling through to the full walk, which re-seeds the token.
@@ -292,7 +298,7 @@ export class SyncEngine {
     // the walk is visible to the next listChanges() call. Re-processing a
     // few changes is fine — the md5/mtime fast-paths make it idempotent.
     const tokenBeforeWalk = await drive.getStartPageToken();
-    const result = await this.pullFullWalk();
+    const result = await this.pullFullWalk(isExcluded);
     manifest.driveChangesPageToken = tokenBeforeWalk;
     return result;
   }
@@ -300,6 +306,7 @@ export class SyncEngine {
   /** Incremental pull — process only the changes Drive reports. */
   private async pullIncremental(
     pageToken: string,
+    isExcluded: (relPath: string) => boolean,
   ): Promise<{ downloaded: number; conflicts: number; softDeletes: number }> {
     const { manifest, drive } = this.opts;
     this.checkAborted();
@@ -337,6 +344,7 @@ export class SyncEngine {
       if (isGone) {
         const knownRel = driveIdToManifestRel.get(change.fileId);
         if (!knownRel) continue; // file we never tracked; nothing to do
+        if (isExcluded(knownRel)) continue; // not ours to manage on this device
         const softDeleted = await this.applySoftDeleteForRemote(knownRel);
         if (softDeleted) softDeletes += 1;
         continue;
@@ -351,7 +359,7 @@ export class SyncEngine {
       // rare and don't break the per-file sync.)
       if (file.mimeType === FOLDER_MIME) {
         const rel = await resolveDriveRelPath(file, folderRelByDriveId, manifest.rootFolderDriveId!, drive);
-        if (rel !== null) {
+        if (rel !== null && !isExcluded(rel)) {
           manifest.folders[rel] = file.id;
           folderRelByDriveId.set(file.id, rel);
         }
@@ -362,6 +370,7 @@ export class SyncEngine {
       // same per-file reconciliation as the full walk.
       const rel = await resolveDriveRelPath(file, folderRelByDriveId, manifest.rootFolderDriveId!, drive);
       if (rel === null) continue;
+      if (isExcluded(rel)) continue; // device opted out of this path (e.g. Projects/)
 
       this.emit({
         total: changes.length,
@@ -378,7 +387,9 @@ export class SyncEngine {
   }
 
   /** Full Drive walk — used for first sync and as a recovery fallback. */
-  private async pullFullWalk(): Promise<{
+  private async pullFullWalk(
+    isExcluded: (relPath: string) => boolean,
+  ): Promise<{
     downloaded: number;
     conflicts: number;
     softDeletes: number;
@@ -403,6 +414,9 @@ export class SyncEngine {
     for (const [relPath, remote] of remoteEntries) {
       this.checkAborted();
       i += 1;
+      // Skip paths this device opted out of (e.g. Projects/ when project sync
+      // is off). They stay on Drive for devices that do want them.
+      if (isExcluded(relPath)) continue;
       this.emit({
         total: remoteEntries.length,
         done: i,
@@ -419,6 +433,7 @@ export class SyncEngine {
     // explicitly via `removed: true` / `trashed: true`.)
     for (const [relPath, entry] of Object.entries(manifest.files)) {
       if (relPath.startsWith(TRASH_PREFIX + "/")) continue;
+      if (isExcluded(relPath)) continue; // not managed on this device
       if (remoteFiles.has(relPath)) continue;
       if (!entry.driveId) continue;
       this.checkAborted();
