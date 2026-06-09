@@ -32,6 +32,13 @@ const NESTBRAIN_INTERNAL_EXCLUDE = [
   ".nestbrain/vector-index",
   ".nestbrain/sync-manifest.json",
   ".nestbrain/data-tmp",
+  // The knowledge review/accept queue is per-machine workflow state derived
+  // from local git commits (the post-commit hook). Replicating it across
+  // devices makes a fresh device show another machine's "atoms to compile" /
+  // pending-review items it never produced. Keep it local.
+  ".nestbrain/knowledge-pending",
+  ".nestbrain/knowledge-rejected",
+  ".nestbrain/raw/projects",
 ];
 
 // Anything that looks like a secrets file, plus generic transient artifacts.
