@@ -1802,7 +1802,27 @@ app.on("before-quit", () => {
   shuttingDown = true;
   stopNestBrainWatcher();
   killNextServer();
+  // Live node-pty children (integrated terminals) keep the process alive past
+  // app.quit() — the classic "window gone, app still in the dock" zombie.
+  for (const [id, sess] of ptySessions) {
+    try { sess.proc.kill(); } catch { /* already gone */ }
+    ptySessions.delete(id);
+  }
+  armQuitFailsafe();
 });
+
+// Belt-and-braces: once a quit is underway, the process MUST die. If any
+// native handle (pty, fsevents, utility process) still wedges the event loop,
+// force the exit. quitAndInstall spawns its installer before this can fire.
+let quitFailsafeArmed = false;
+function armQuitFailsafe(): void {
+  if (quitFailsafeArmed) return;
+  quitFailsafeArmed = true;
+  setTimeout(() => {
+    console.warn("[quit] event loop still alive 4s after quit — forcing exit");
+    app.exit(0);
+  }, 4000);
+}
 
 // The sync + team managers own chokidar watchers whose macOS fsevents backend
 // must be closed BEFORE Node tears down, or it fires into a freed N-API
