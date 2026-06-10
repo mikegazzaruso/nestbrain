@@ -57,3 +57,6 @@ coverage/
 ANTHROPIC.md
 DESIDERATA.md
 DEVELOPMENT_CONTRACT.md
+
+# Auto-update channel key — injected at build time (CI secret / .env.local)
+apps/desktop/src/update-config.ts

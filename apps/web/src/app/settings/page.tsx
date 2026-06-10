@@ -19,6 +19,7 @@ import {
 import { SyncAccountSection } from "@/components/sync-account-section";
 import { CliInstallSection } from "@/components/cli-install-section";
 import { TeamSection } from "@/components/team-section";
+import { UpdatesSection } from "@/components/updates-section";
 
 interface OpenAIModel {
   id: string;
@@ -183,6 +184,8 @@ export default function SettingsPage() {
         <SyncAccountSection />
 
         <TeamSection />
+
+        <UpdatesSection />
 
         {/* LLM Provider */}
         <section className="mb-10">

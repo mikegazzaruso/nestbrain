@@ -1736,6 +1736,16 @@ app.whenReady().then(async () => {
       serverUrl = await startNextServer();
     }
     createWindow();
+    // Auto-update (official builds only). The updater + electron-updater are
+    // esbuild-bundled into dist/updater.cjs because the packaged node_modules
+    // carries only node-pty; a missing/broken bundle must never block startup.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { initUpdater } = require("./updater.cjs") as { initUpdater: (g: () => BrowserWindow | null) => void };
+      initUpdater(() => mainWindow);
+    } catch (e) {
+      console.warn("[updates] updater bundle unavailable:", e instanceof Error ? e.message : e);
+    }
     // Start watching NestBrain for file-tree auto-refresh if we already
     // have a bootstrap from a previous run. Fresh installs start it from
     // inside setupNestBrain after onboarding.

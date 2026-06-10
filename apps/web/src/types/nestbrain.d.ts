@@ -20,6 +20,14 @@ interface CreateTerminalResult {
 }
 
 declare global {
+  interface UpdateState {
+    status: "disabled" | "dev" | "idle" | "checking" | "downloading" | "ready" | "error";
+    current: string;
+    available?: string;
+    percent?: number;
+    error?: string;
+  }
+
   interface TeamMember {
     id: string;
     email: string;
@@ -155,6 +163,12 @@ declare global {
         ) => Promise<GitOpResult>;
         stashPop: (repoPath: string, ref?: string) => Promise<GitOpResult>;
         stashDrop: (repoPath: string, ref: string) => Promise<GitOpResult>;
+      };
+      updates: {
+        getState: () => Promise<UpdateState>;
+        check: () => Promise<UpdateState>;
+        restart: () => Promise<void>;
+        onStateChanged: (callback: (state: UpdateState) => void) => () => void;
       };
       cli: {
         status: () => Promise<{

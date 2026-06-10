@@ -108,6 +108,9 @@ jobs:
           # fails at runtime with Google "invalid_client".
           NESTBRAIN_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
           NESTBRAIN_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          # Auto-update channel key (official-build entitlement). Without it
+          # the build ships with the updater disabled (source-build behavior).
+          NESTBRAIN_UPDATE_KEY: ${{ secrets.NESTBRAIN_UPDATE_KEY }}
         run: |
           if [ -z "$CSC_LINK" ]; then
             echo "No MAC_CERTIFICATE secret — building unsigned"
@@ -120,6 +123,17 @@ jobs:
         with:
           name: nestbrain-macos-arm64
           path: apps/desktop/release/*.dmg
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload macOS update-feed artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nestbrain-update-mac
+          path: |
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/latest-mac.yml
           if-no-files-found: error
           retention-days: 7
 
@@ -158,6 +172,8 @@ jobs:
           # fails at runtime with Google "invalid_client".
           NESTBRAIN_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
           NESTBRAIN_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          # Auto-update channel key (official-build entitlement).
+          NESTBRAIN_UPDATE_KEY: ${{ secrets.NESTBRAIN_UPDATE_KEY }}
         run: pnpm desktop:package:win
 
       - name: Upload Windows artifact
@@ -165,6 +181,14 @@ jobs:
         with:
           name: nestbrain-windows-x64
           path: apps/desktop/release/*.exe
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload Windows update-feed artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nestbrain-update-win
+          path: apps/desktop/release/latest.yml
           if-no-files-found: error
           retention-days: 7
 

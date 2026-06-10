@@ -196,6 +196,18 @@ contextBridge.exposeInMainWorld("nestbrain", {
       ipcRenderer.invoke("nestbrain:git:stashDrop", repoPath, ref),
   },
 
+  // Auto-update (official builds; inert in source builds)
+  updates: {
+    getState: (): Promise<unknown> => ipcRenderer.invoke("nestbrain:updates:getState"),
+    check: (): Promise<unknown> => ipcRenderer.invoke("nestbrain:updates:check"),
+    restart: (): Promise<void> => ipcRenderer.invoke("nestbrain:updates:restart"),
+    onStateChanged: (callback: (state: unknown) => void) => {
+      const handler = (_e: unknown, state: unknown) => callback(state);
+      ipcRenderer.on("nestbrain:updates:stateChanged", handler);
+      return () => ipcRenderer.off("nestbrain:updates:stateChanged", handler);
+    },
+  },
+
   // CLI on PATH (Install / Uninstall)
   cli: {
     status: (): Promise<{
