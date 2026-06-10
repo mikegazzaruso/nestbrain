@@ -1788,6 +1788,9 @@ app.whenReady().then(async () => {
   }
 
   app.on("activate", () => {
+    // Never respawn a window mid-quit: the embedded server is already dead and
+    // the new window would just render black until the process exits.
+    if (shuttingDown) return;
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
@@ -1800,6 +1803,9 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   shuttingDown = true;
+  // Drop the dock icon immediately: while the (bounded) teardown runs, a
+  // still-clickable icon could relaunch into a black window.
+  if (process.platform === "darwin") app.dock?.hide();
   stopNestBrainWatcher();
   killNextServer();
   // Live node-pty children (integrated terminals) keep the process alive past
@@ -1824,9 +1830,9 @@ function armQuitFailsafe(): void {
     // sees a crash report for what was just a quit. SIGKILL skips all teardown:
     // instant, silent, no crash dialog. Only reachable when the normal quit
     // already failed to finish within 4s.
-    console.warn("[quit] event loop still alive 4s after quit — SIGKILL");
+    console.warn("[quit] event loop still alive 2.5s after quit — SIGKILL");
     process.kill(process.pid, "SIGKILL");
-  }, 4000);
+  }, 2500);
 }
 
 // The sync + team managers own chokidar watchers whose macOS fsevents backend
@@ -1837,7 +1843,7 @@ let watchersDisposed = false;
 
 /**
  * Close the chokidar watchers before the process exits (fsevents aborts if
- * torn down after Node starts dying — see 1.7.5). Bounded by a 3s timeout: a
+ * torn down after Node starts dying — see 1.7.5). Bounded by a short timeout: a
  * hung chokidar close() must never leave the app alive-but-windowless in the
  * dock. Idempotent so the updater can run it ahead of quitAndInstall.
  */
@@ -1846,7 +1852,7 @@ async function disposeWatchersForQuit(killOnTimeout = false): Promise<void> {
   shuttingDown = true;
   const clean = await Promise.race([
     Promise.allSettled([syncManager?.dispose(), teamManager?.dispose()]).then(() => true),
-    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 3000)),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1500)),
   ]);
   watchersDisposed = true;
   if (!clean && killOnTimeout) {
