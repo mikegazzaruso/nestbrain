@@ -1,6 +1,6 @@
 {
   "name": "@nestbrain/desktop",
-  "version": "1.7.8",
+  "version": "1.7.9",
   "private": true,
   "description": "NestBrain native desktop app",
   "main": "dist/main.js",

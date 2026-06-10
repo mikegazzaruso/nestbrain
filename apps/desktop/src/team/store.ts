@@ -40,6 +40,9 @@ export async function clearToken(): Promise<void> {
 export interface TeamConfig {
   serverUrl?: string;
   workspaceId?: string;
+  /** Signed-in identity (incl. role) — restored on app launch so the UI knows
+   *  the user is an admin without forcing a re-login. Not sensitive. */
+  user?: { email: string; name: string; role: string };
   /** Last-synced manifest per workspace, used as the 3-way reconcile base. */
   bases?: Record<string, FileMap>;
 }

@@ -69,7 +69,7 @@ export class TeamManager {
     const [token, config] = await Promise.all([loadToken(), loadConfig()]);
     if (!token || !config.serverUrl) return;
     this.backend = new TeamBackend(config.serverUrl, token);
-    this.set({ status: "connected", serverUrl: config.serverUrl, workspaceId: config.workspaceId });
+    this.set({ status: "connected", serverUrl: config.serverUrl, workspaceId: config.workspaceId, user: config.user });
     // Best-effort hydrate (license + workspaces); don't fail init if offline.
     try {
       const [h, ws] = await Promise.all([teamHealth(config.serverUrl), this.backend.listWorkspaces()]);
@@ -123,6 +123,9 @@ export class TeamManager {
       this.backend = new TeamBackend(url, token);
       const cfg = await loadConfig();
       cfg.serverUrl = url;
+      // Persist the identity (incl. role): init() restores it on app launch so
+      // an admin keeps the member-management UI without re-logging in.
+      cfg.user = { email: user.email, name: user.name, role: user.role };
       const [h, ws] = await Promise.all([teamHealth(url), this.backend.listWorkspaces()]);
       const workspaceId = cfg.workspaceId && ws.some((w) => w.id === cfg.workspaceId) ? cfg.workspaceId : ws[0]?.id;
       cfg.workspaceId = workspaceId;
