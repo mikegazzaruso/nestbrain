@@ -413,6 +413,29 @@ function createWindow(): void {
     console.warn("[renderer] unresponsive — reloading");
     if (!shuttingDown) mainWindow?.reload();
   });
+  // macOS: the red close button quits the app entirely (after confirming)
+  // instead of leaving a windowless process in the dock — reopening from the
+  // dock could come back as a black window. Cmd+Q and the updater's restart
+  // set shuttingDown first, so they pass through without the prompt.
+  if (process.platform === "darwin") {
+    mainWindow.on("close", (e) => {
+      if (shuttingDown) return;
+      e.preventDefault();
+      const choice = dialog.showMessageBoxSync(mainWindow!, {
+        type: "question",
+        buttons: ["Quit NestBrain", "Cancel"],
+        defaultId: 0,
+        cancelId: 1,
+        message: "Quit NestBrain?",
+        detail: "This closes the app completely.",
+      });
+      if (choice === 0) {
+        shuttingDown = true;
+        app.quit();
+      }
+    });
+  }
+
   // When the window comes back (focus / un-minimize / show), verify the
   // renderer actually responds; a black window with a live-looking process is
   // exactly the state invalidate() alone couldn't fix.
