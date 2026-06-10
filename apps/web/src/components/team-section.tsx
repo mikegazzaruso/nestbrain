@@ -225,6 +225,12 @@ export function TeamSection() {
               </button>
             </div>
 
+            <p className="text-[11px] text-muted/50 leading-relaxed">
+              Edited the same file as a teammate? Both versions are kept — theirs lands next to
+              yours as <code className="text-accent/70 bg-accent/5 px-1 rounded">*.conflict-…</code>;
+              merge what you need, then delete the copy. Nothing is ever silently overwritten.
+            </p>
+
             <MembersBlock
               members={members}
               // Only the CURRENT user being an admin gates add/remove — not
