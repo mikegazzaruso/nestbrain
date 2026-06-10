@@ -7,6 +7,8 @@ import {
   dialog,
   utilityProcess,
   UtilityProcess,
+  powerMonitor,
+  powerSaveBlocker,
 } from "electron";
 import { createServer } from "node:net";
 import { join, dirname, resolve, sep, basename } from "node:path";
@@ -84,6 +86,19 @@ const DEV_URL = "http://localhost:3000";
 
 // Must be set before app is ready so the menu bar shows "NestBrain" not "Electron"
 app.setName("NestBrain");
+
+// Black-window-after-unfocus fix, part 1 (must run before app is ready).
+// When the window is occluded/unfocused for a while, Chromium backgrounds the
+// renderer and (on macOS) tears down the compositor surface via its occlusion
+// tracker; a known macOS bug leaves the surface black on return. webPreferences
+// backgroundThrottling:false only covers JS timers — these switches stop the
+// process-level backgrounding and the occlusion teardown itself.
+app.commandLine.appendSwitch("disable-renderer-backgrounding");
+app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
+app.commandLine.appendSwitch("disable-background-timer-throttling");
+if (process.platform === "darwin") {
+  app.commandLine.appendSwitch("disable-features", "MacWebContentsOcclusion");
+}
 
 let mainWindow: BrowserWindow | null = null;
 let nextServer: UtilityProcess | null = null;
@@ -331,6 +346,33 @@ async function restartNextServer(): Promise<void> {
   }
 }
 
+/**
+ * Black-window recovery, part 2. After the window was backgrounded/occluded,
+ * the page can be alive-but-black (lost compositor surface) or silently hung.
+ * Ping the renderer with a trivial script: responds → just repaint
+ * (invalidate); times out or throws → reload in place. Cheap (runs only on
+ * focus/show/restore/resume), and reload only fires when the page is truly
+ * gone, so users never lose a healthy session.
+ */
+async function ensureRendererAlive(): Promise<void> {
+  if (!mainWindow || mainWindow.isDestroyed() || shuttingDown) return;
+  const wc = mainWindow.webContents;
+  if (wc.isCrashed()) {
+    wc.reload();
+    return;
+  }
+  try {
+    await Promise.race([
+      wc.executeJavaScript("1", true),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("renderer ping timeout")), 3000)),
+    ]);
+    wc.invalidate();
+  } catch {
+    console.warn("[renderer] not responding after wake — reloading");
+    if (!shuttingDown) wc.reload();
+  }
+}
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -371,9 +413,12 @@ function createWindow(): void {
     console.warn("[renderer] unresponsive — reloading");
     if (!shuttingDown) mainWindow?.reload();
   });
-  // When the window regains focus after being backgrounded, force a repaint so
-  // a lost compositor surface doesn't show as black.
-  mainWindow.on("focus", () => mainWindow?.webContents.invalidate());
+  // When the window comes back (focus / un-minimize / show), verify the
+  // renderer actually responds; a black window with a live-looking process is
+  // exactly the state invalidate() alone couldn't fix.
+  mainWindow.on("focus", () => void ensureRendererAlive());
+  mainWindow.on("restore", () => void ensureRendererAlive());
+  mainWindow.on("show", () => void ensureRendererAlive());
 
   const url = isDev ? DEV_URL : serverUrl;
   if (url) mainWindow.loadURL(url);
@@ -1595,6 +1640,15 @@ ipcMain.handle("nestbrain:cli:uninstall", async () => {
 });
 
 app.whenReady().then(async () => {
+  // Black-window fix, part 3: macOS App Nap suspends the whole process when
+  // the app is hidden long enough — on wake the GPU surface is gone and the
+  // window stays black. prevent_app_suspension blocks App Nap only (display
+  // sleep is untouched). Also re-verify the renderer after system sleep.
+  if (process.platform === "darwin") {
+    powerSaveBlocker.start("prevent-app-suspension");
+  }
+  powerMonitor.on("resume", () => void ensureRendererAlive());
+
   if (process.platform === "darwin" && !app.isPackaged && app.dock) {
     try {
       const iconPath = join(__dirname, "../build/icon.png");
