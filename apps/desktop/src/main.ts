@@ -1660,10 +1660,20 @@ app.whenReady().then(async () => {
     },
     getServerUrl: () => serverUrl,
   });
+  let teamWasConnected = false;
   teamManager.onChange((state) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("nestbrain:team:stateChanged", state);
     }
+    // Entering Team Server mode → turn OFF Google Drive sync (knowledge AND
+    // projects). The Team Server owns Library/Knowledge; two engines on the same
+    // tree would conflict. On disconnect we leave Drive off — the user re-enables
+    // it deliberately.
+    const nowConnected = state.status === "connected";
+    if (nowConnected && !teamWasConnected) {
+      void syncManager?.setPreferences({ enabled: false, includeProjects: false });
+    }
+    teamWasConnected = nowConnected;
   });
   await teamManager.init();
 

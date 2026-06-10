@@ -8,15 +8,18 @@ import {
   RefreshCw,
   AlertCircle,
   CheckCircle2,
+  ShieldCheck,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { useSync } from "@/lib/sync-context";
+import { useTeamConnected } from "@/lib/use-team-connected";
 
 // Settings → Sync & Account section.
 // Drives the auth flow + the real sync preferences (Phase 2 onward).
 export function SyncAccountSection() {
   const { state: auth, signIn, signOut, cancelSignIn } = useAuth();
   const { state: sync, setPreferences, syncNow, available: syncAvailable } = useSync();
+  const teamConnected = useTeamConnected();
 
   return (
     <section className="mb-10">
@@ -25,7 +28,17 @@ export function SyncAccountSection() {
         Sync &amp; Account
       </h2>
 
-      <div className="p-5 rounded-xl bg-card border border-border space-y-5">
+      <div className="p-5 rounded-xl bg-card border border-border space-y-4">
+        {teamConnected && (
+          <div className="flex items-start gap-2 text-[11px] text-violet-300 bg-violet-500/10 border border-violet-500/25 rounded-lg px-3 py-2 leading-relaxed">
+            <ShieldCheck size={13} className="shrink-0 mt-0.5" />
+            <span>
+              <b>Google Drive Sync is disabled while Team Server is active.</b> Your knowledge
+              syncs through the Team Server instead. Disconnect Team Server to use Drive sync again.
+            </span>
+          </div>
+        )}
+        <div className={`space-y-5 ${teamConnected ? "opacity-50 pointer-events-none select-none" : ""}`} aria-disabled={teamConnected}>
         {auth.status === "signed-out" && (
           <div className="flex items-start gap-4">
             <div className="flex-1 min-w-0">
@@ -121,6 +134,7 @@ export function SyncAccountSection() {
             </div>
           </>
         )}
+        </div>
       </div>
     </section>
   );
