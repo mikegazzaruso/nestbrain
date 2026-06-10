@@ -101,7 +101,14 @@ export function initUpdater(
     // Squirrel's install — window gone, app stuck in the dock, still on the
     // old version. With them already closed, will-quit lets the quit through.
     try { await prepareQuit(); } catch { /* still proceed with the install */ }
-    setImmediate(() => autoUpdater.quitAndInstall());
+    setImmediate(() => {
+      autoUpdater.quitAndInstall();
+      // quitAndInstall has already spawned the installer (ShipIt on macOS) by
+      // the time it asks the app to quit. If a wedged native handle keeps the
+      // quit from completing, exit via SIGKILL: no teardown → no fsevents
+      // abort → no crash report — and the install still applies.
+      setTimeout(() => process.kill(process.pid, "SIGKILL"), 2500);
+    });
   });
 
   state = { ...state, status: "idle" };

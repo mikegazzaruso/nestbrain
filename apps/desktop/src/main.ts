@@ -1819,8 +1819,13 @@ function armQuitFailsafe(): void {
   if (quitFailsafeArmed) return;
   quitFailsafeArmed = true;
   setTimeout(() => {
-    console.warn("[quit] event loop still alive 4s after quit — forcing exit");
-    app.exit(0);
+    // SIGKILL ourselves rather than app.exit(): a graceful-ish exit still runs
+    // native teardown, and a wedged fsevents handle abort()s there — the user
+    // sees a crash report for what was just a quit. SIGKILL skips all teardown:
+    // instant, silent, no crash dialog. Only reachable when the normal quit
+    // already failed to finish within 4s.
+    console.warn("[quit] event loop still alive 4s after quit — SIGKILL");
+    process.kill(process.pid, "SIGKILL");
   }, 4000);
 }
 
@@ -1836,14 +1841,23 @@ let watchersDisposed = false;
  * hung chokidar close() must never leave the app alive-but-windowless in the
  * dock. Idempotent so the updater can run it ahead of quitAndInstall.
  */
-async function disposeWatchersForQuit(): Promise<void> {
+async function disposeWatchersForQuit(killOnTimeout = false): Promise<void> {
   if (watchersDisposed) return;
   shuttingDown = true;
-  await Promise.race([
-    Promise.allSettled([syncManager?.dispose(), teamManager?.dispose()]),
-    new Promise((resolve) => setTimeout(resolve, 3000)),
+  const clean = await Promise.race([
+    Promise.allSettled([syncManager?.dispose(), teamManager?.dispose()]).then(() => true),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 3000)),
   ]);
   watchersDisposed = true;
+  if (!clean && killOnTimeout) {
+    // A wedged fsevents handle abort()s during native teardown no matter how
+    // we exit "gracefully" — the user would see a crash report for a plain
+    // quit. Skip teardown entirely. The updater path passes false here: it
+    // must reach quitAndInstall (which stages the installer) first, and the
+    // armQuitFailsafe SIGKILL covers it afterwards.
+    console.warn("[quit] watcher close timed out — SIGKILL to avoid the fsevents abort");
+    process.kill(process.pid, "SIGKILL");
+  }
 }
 
 app.on("will-quit", (event) => {
@@ -1852,7 +1866,7 @@ app.on("will-quit", (event) => {
   // path disposes BEFORE quitting (see updater.cjs prepareQuit); this handler
   // only covers ordinary quits (Cmd+Q, menu).
   event.preventDefault();
-  void disposeWatchersForQuit().finally(() => app.quit());
+  void disposeWatchersForQuit(true).finally(() => app.quit());
 });
 
 // If the GPU process dies (the usual cause of a black window after sleep/
