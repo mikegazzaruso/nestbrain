@@ -25,6 +25,7 @@ const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
 
 let state: UpdateState = { status: "disabled", current: app.getVersion() };
 let getWindow: () => BrowserWindow | null = () => null;
+let prepareQuit: () => Promise<void> = async () => {};
 
 function set(patch: Partial<UpdateState>): void {
   state = { ...state, ...patch };
@@ -34,8 +35,12 @@ function set(patch: Partial<UpdateState>): void {
   }
 }
 
-export function initUpdater(windowGetter: () => BrowserWindow | null): void {
+export function initUpdater(
+  windowGetter: () => BrowserWindow | null,
+  onBeforeQuit?: () => Promise<void>,
+): void {
   getWindow = windowGetter;
+  if (onBeforeQuit) prepareQuit = onBeforeQuit;
 
   ipcMain.handle("nestbrain:updates:getState", () => state);
 
@@ -90,8 +95,13 @@ export function initUpdater(windowGetter: () => BrowserWindow | null): void {
     }
     return state;
   });
-  ipcMain.handle("nestbrain:updates:restart", () => {
-    autoUpdater.quitAndInstall();
+  ipcMain.handle("nestbrain:updates:restart", async () => {
+    // Dispose the watchers BEFORE quitAndInstall: the main process's will-quit
+    // handler defers quits to close them, and a deferred quit cancels
+    // Squirrel's install — window gone, app stuck in the dock, still on the
+    // old version. With them already closed, will-quit lets the quit through.
+    try { await prepareQuit(); } catch { /* still proceed with the install */ }
+    setImmediate(() => autoUpdater.quitAndInstall());
   });
 
   state = { ...state, status: "idle" };

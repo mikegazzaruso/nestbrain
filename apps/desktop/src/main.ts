@@ -1741,8 +1741,10 @@ app.whenReady().then(async () => {
     // carries only node-pty; a missing/broken bundle must never block startup.
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { initUpdater } = require("./updater.cjs") as { initUpdater: (g: () => BrowserWindow | null) => void };
-      initUpdater(() => mainWindow);
+      const { initUpdater } = require("./updater.cjs") as {
+        initUpdater: (g: () => BrowserWindow | null, onBeforeQuit?: () => Promise<void>) => void;
+      };
+      initUpdater(() => mainWindow, disposeWatchersForQuit);
     } catch (e) {
       console.warn("[updates] updater bundle unavailable:", e instanceof Error ? e.message : e);
     }
@@ -1784,18 +1786,30 @@ app.on("before-quit", () => {
 // threadsafe function and aborts (SIGABRT) on quit. Defer the quit once while we
 // await their disposal. Cross-platform safe (a no-op cost on Windows/Linux).
 let watchersDisposed = false;
+
+/**
+ * Close the chokidar watchers before the process exits (fsevents aborts if
+ * torn down after Node starts dying — see 1.7.5). Bounded by a 3s timeout: a
+ * hung chokidar close() must never leave the app alive-but-windowless in the
+ * dock. Idempotent so the updater can run it ahead of quitAndInstall.
+ */
+async function disposeWatchersForQuit(): Promise<void> {
+  if (watchersDisposed) return;
+  shuttingDown = true;
+  await Promise.race([
+    Promise.allSettled([syncManager?.dispose(), teamManager?.dispose()]),
+    new Promise((resolve) => setTimeout(resolve, 3000)),
+  ]);
+  watchersDisposed = true;
+}
+
 app.on("will-quit", (event) => {
   if (watchersDisposed) return;
+  // Deferring the quit breaks Squirrel's quitAndInstall flow, so the updater
+  // path disposes BEFORE quitting (see updater.cjs prepareQuit); this handler
+  // only covers ordinary quits (Cmd+Q, menu).
   event.preventDefault();
-  shuttingDown = true;
-  void (async () => {
-    try {
-      await Promise.allSettled([syncManager?.dispose(), teamManager?.dispose()]);
-    } finally {
-      watchersDisposed = true;
-      app.quit();
-    }
-  })();
+  void disposeWatchersForQuit().finally(() => app.quit());
 });
 
 // If the GPU process dies (the usual cause of a black window after sleep/
