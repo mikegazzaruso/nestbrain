@@ -30,7 +30,7 @@ fetch_artifact() {
   [ -n "$id" ] || { echo "✗ artifact not found: $name"; exit 1; }
   mkdir -p "$TMP/$name"
   # GitHub intermittently 401s these; retry hard before giving up.
-  curl -fSL --retry 6 --retry-all-errors --retry-delay 5 -H "Authorization: Bearer $TOK" \
+  curl -fSL --retry 6 --retry-all-errors --retry-delay 5 --speed-limit 10240 --speed-time 30 -H "Authorization: Bearer $TOK" \
     "https://api.github.com/repos/mikegazzaruso/nestbrain/actions/artifacts/${id}/zip" \
     -o "$TMP/$name.zip"
   unzip -q "$TMP/$name.zip" -d "$TMP/$name"
