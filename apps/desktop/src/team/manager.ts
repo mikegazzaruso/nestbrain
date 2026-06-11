@@ -176,6 +176,16 @@ export class TeamManager {
         await rm(dir, { recursive: true, force: true });
         await mkdir(dir, { recursive: true });
       }
+      // Also reset the local knowledge queue: wiping the wiki kills its
+      // compile tracker, so every accepted atom would re-flag as "to compile"
+      // against the NEW team's knowledge — stale noise from the old life.
+      for (const rel of [
+        join(".nestbrain", "knowledge-pending"),
+        join(".nestbrain", "knowledge-rejected"),
+        join(".nestbrain", "raw", "projects"),
+      ]) {
+        await rm(join(root, rel), { recursive: true, force: true });
+      }
     }
 
     await this.connect(url, email, password); // step 4 (starts auto-sync)
