@@ -32,6 +32,10 @@ import { TeamManager } from "./team";
 import { modulesFromLicense } from "./modules";
 import { loadDevModule, type DevModuleApi } from "./dev-module";
 
+// Set once the lazy updater bundle loads; lets team connect/disconnect refresh
+// the update credentials + "via" label immediately.
+let updaterRecheck: (() => void) | null = null;
+
 // On macOS, packaged Electron apps don't inherit the user's shell PATH —
 // they get a minimal PATH like /usr/bin:/bin which doesn't include common
 // install locations (~/.npm-global/bin, /opt/homebrew/bin, etc.). This
@@ -1365,6 +1369,10 @@ app.whenReady().then(async () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("nestbrain:team:stateChanged", state);
     }
+    // Connect/disconnect changes the update entitlement → refresh the
+    // credentials and the "via" label instead of waiting for the next
+    // periodic check.
+    updaterRecheck?.();
     // Entering Team Server mode → turn OFF Google Drive sync (knowledge AND
     // projects). The Team Server owns Library/Knowledge; two engines on the same
     // tree would conflict. On disconnect we leave Drive off — the user re-enables
@@ -1387,14 +1395,16 @@ app.whenReady().then(async () => {
     // carries only node-pty; a missing/broken bundle must never block startup.
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { initUpdater } = require("./updater.cjs") as {
+      const { initUpdater, recheckUpdates } = require("./updater.cjs") as {
         initUpdater: (
           g: () => BrowserWindow | null,
           onBeforeQuit?: () => Promise<void>,
           credentialsProvider?: () => Promise<{ entitlement?: string | null; license?: string | null }>,
         ) => void;
+        recheckUpdates: () => void;
       };
       initUpdater(() => mainWindow, disposeWatchersForQuit, getUpdateCredentials);
+      updaterRecheck = recheckUpdates;
     } catch (e) {
       console.warn("[updates] updater bundle unavailable:", e instanceof Error ? e.message : e);
     }

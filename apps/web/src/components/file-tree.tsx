@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useSync } from "@/lib/sync-context";
 import { useModules } from "@/lib/modules-context";
+import { useTeamConnected } from "@/lib/use-team-connected";
 import { FileIcon } from "./file-icon";
 import { useGitStatus, pickMarker, markerClass } from "@/lib/git-status-context";
 import { useTerminal } from "@/lib/terminal-context";
@@ -813,6 +814,7 @@ function TreeNode({
 }: TreeNodeProps) {
   const { has: hasModule } = useModules();
   const devModule = hasModule("dev");
+  const teamConnected = useTeamConnected();
   const isOpen = expanded.has(path);
   const isSelected = selectedPath === path;
   const isRenaming = renamingPath === path;
@@ -986,7 +988,12 @@ function TreeNode({
       {isOpen && children && (
         <div>
           {children
-            .filter((entry) => devModule || !(isRoot && entry.isDirectory && entry.name === "Projects"))
+            .filter((entry) => {
+              if (!isRoot || !entry.isDirectory) return true;
+              if (entry.name === "Projects" && !devModule) return false;
+              if (entry.name === "Team" && !teamConnected) return false;
+              return true;
+            })
             .map((entry) => (
             <TreeNode
               key={entry.path}

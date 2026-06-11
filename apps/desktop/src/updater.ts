@@ -154,4 +154,17 @@ export function initUpdater(
   // First check shortly after launch (let the window settle), then periodic.
   setTimeout(() => void checkWithCredentials().catch(() => {}), 15_000);
   setInterval(() => void checkWithCredentials().catch(() => {}), CHECK_EVERY_MS);
+  recheck = () => void checkWithCredentials().catch(() => {});
+}
+
+// Re-evaluate credentials (and the "via" label) outside the periodic timer —
+// e.g. on Team Server connect/disconnect, so the Updates section doesn't keep
+// saying "via your Team Server" after a logout. Debounced: state changes come
+// in bursts during connect/sync.
+let recheck: (() => void) | null = null;
+let recheckTimer: ReturnType<typeof setTimeout> | null = null;
+export function recheckUpdates(): void {
+  if (!recheck) return;
+  if (recheckTimer) clearTimeout(recheckTimer);
+  recheckTimer = setTimeout(() => recheck?.(), 1_500);
 }
