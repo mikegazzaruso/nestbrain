@@ -119,7 +119,10 @@ export type AuthState =
   | { status: "signed-out" }
   | { status: "signing-in" }
   | { status: "signed-in"; user: GoogleUser }
-  | { status: "error"; error: string };
+  | { status: "error"; error: string }
+  /** Source build with placeholder OAuth credentials — Drive sync can't work;
+   *  the UI shows a disabled control instead of a sign-in that would fail. */
+  | { status: "unconfigured" };
 
 /**
  * Sync preferences. Stored per-device — they describe how *this* machine

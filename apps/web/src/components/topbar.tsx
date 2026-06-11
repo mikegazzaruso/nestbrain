@@ -53,6 +53,21 @@ function AccountWidget() {
     );
   }
 
+  if (state.status === "unconfigured") {
+    // Source build: sync sign-in would only fail at Google. Disabled + honest.
+    return (
+      <button
+        disabled
+        style={noDrag}
+        title="Drive sync requires the official build from nestbrain.app — or wire your own Google OAuth client (see README)."
+        className="flex items-center gap-2 h-7 px-3 rounded-md border border-border bg-card text-xs font-medium opacity-50 cursor-not-allowed"
+      >
+        <GoogleMark />
+        Sync — not available in the free build
+      </button>
+    );
+  }
+
   if (state.status === "signed-out") {
     return (
       <button

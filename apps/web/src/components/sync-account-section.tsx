@@ -39,6 +39,26 @@ export function SyncAccountSection() {
           </div>
         )}
         <div className={`space-y-5 ${teamConnected ? "opacity-50 pointer-events-none select-none" : ""}`} aria-disabled={teamConnected}>
+        {auth.status === "unconfigured" && (
+          <div className="flex items-start gap-4">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium mb-1">Sync is not available in the free build</p>
+              <p className="text-[11px] text-muted/60 leading-relaxed">
+                Multi-device sync comes pre-configured in the official builds from{" "}
+                <span className="text-accent/80">nestbrain.app</span>. Building from source? You can
+                wire your own Google OAuth client — see <b>Google OAuth setup</b> in the README.
+              </p>
+            </div>
+            <button
+              disabled
+              className="shrink-0 flex items-center gap-2 h-9 px-4 rounded-lg border border-border bg-background text-xs font-medium opacity-50 cursor-not-allowed"
+            >
+              <GoogleMark />
+              Sign in with Google
+            </button>
+          </div>
+        )}
+
         {auth.status === "signed-out" && (
           <div className="flex items-start gap-4">
             <div className="flex-1 min-w-0">

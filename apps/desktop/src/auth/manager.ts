@@ -17,6 +17,12 @@ import {
   isEncryptionAvailable,
   type StoredSession,
 } from "./token-store";
+import { OAUTH_CLIENT_ID } from "./oauth-config";
+
+// Source builds get placeholder OAuth credentials (ensure-oauth-config.mjs):
+// sign-in would only fail at Google with invalid_client, so surface a clear
+// "unconfigured" state and the UI shows a disabled control instead.
+const OAUTH_CONFIGURED = !!OAUTH_CLIENT_ID && !OAUTH_CLIENT_ID.startsWith("YOUR_");
 
 // Refresh the access token this many ms before it actually expires.
 const REFRESH_LEAD_MS = 5 * 60 * 1000; // 5 minutes
@@ -24,13 +30,14 @@ const REFRESH_LEAD_MS = 5 * 60 * 1000; // 5 minutes
 type Listener = (state: AuthState) => void;
 
 export class AuthManager {
-  private state: AuthState = { status: "signed-out" };
+  private state: AuthState = OAUTH_CONFIGURED ? { status: "signed-out" } : { status: "unconfigured" };
   private session: StoredSession | null = null;
   private listeners = new Set<Listener>();
   private signInAbort: AbortController | null = null;
 
   /** Load any previously persisted session. Call once on app startup. */
   async init(): Promise<void> {
+    if (!OAUTH_CONFIGURED) return; // stay "unconfigured"
     if (!isEncryptionAvailable()) {
       console.warn("[auth] safeStorage unavailable on this platform");
     }
@@ -57,6 +64,7 @@ export class AuthManager {
   }
 
   async signIn(): Promise<void> {
+    if (!OAUTH_CONFIGURED) return; // source build — nothing to sign in to
     if (this.state.status === "signing-in") {
       // Already running — ignore double-clicks.
       return;
