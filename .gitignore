@@ -60,3 +60,4 @@ DEVELOPMENT_CONTRACT.md
 
 # Auto-update channel key — injected at build time (CI secret / .env.local)
 apps/desktop/src/update-config.ts
+apps/desktop/src/dev-impl/

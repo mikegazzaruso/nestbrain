@@ -25,22 +25,12 @@ import {
   watch,
   type FSWatcher,
 } from "node:fs";
-// Lazy-load node-pty: if the native binding fails to load (wrong arch,
-// missing DLL, etc.) we still want the app to start — just without
-// terminal support. A top-level `import` would crash the entire process
-// before Electron even shows a window.
-let pty: typeof import("node-pty") | null = null;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  pty = require("node-pty") as typeof import("node-pty");
-} catch (err) {
-  console.error("[pty] native binding failed to load:", err);
-}
 import { execFileSync, execSync, spawn } from "node:child_process";
 import { AuthManager } from "./auth";
 import { SyncManager } from "./sync";
 import { TeamManager } from "./team";
 import { modulesFromLicense } from "./modules";
+import { loadDevModule, type DevModuleApi } from "./dev-module";
 
 // On macOS, packaged Electron apps don't inherit the user's shell PATH —
 // they get a minimal PATH like /usr/bin:/bin which doesn't include common
@@ -495,20 +485,7 @@ ipcMain.handle("nestbrain:selectDirectory", async () => {
   return result.filePaths[0];
 });
 
-// ====== Project knowledge-readiness ======
-// A project is "knowledge-ready" when the post-commit hook is installed (every
-// commit then auto-extracts knowledge atoms). We make a project ready by
-// git-init'ing it if needed and running `nestbrain projects register` via the
-// bundled CLI — no @nestbrain/core import in the main bundle.
-
-function isKnowledgeReady(projectPath: string): boolean {
-  try {
-    const hook = join(projectPath, ".git", "hooks", "post-commit");
-    return existsSync(hook) && readFileSync(hook, "utf-8").includes("nestbrain-knowledge-hook");
-  } catch {
-    return false;
-  }
-}
+// ====== CLI plumbing shared with the Dev module ======
 
 /** Command the installed hook should invoke at commit time. */
 function hookCliCommand(): string {
@@ -530,176 +507,16 @@ function runNestbrainCli(args: string[]): void {
   execFileSync(cmd, args, { stdio: "ignore", timeout: 60_000, shell: process.platform === "win32" });
 }
 
-function makeProjectKnowledgeReady(projectPath: string): void {
-  if (!existsSync(join(projectPath, ".git"))) {
-    execFileSync("git", ["-C", projectPath, "init"], { stdio: "ignore", timeout: 15_000 });
-  }
-  runNestbrainCli(["projects", "register", "--repo", projectPath, "--cli", hookCliCommand()]);
-}
-
-ipcMain.handle("nestbrain:projects:status", (_e, projectPath: string) => {
-  if (typeof projectPath !== "string" || !projectPath) return { ready: false };
-  return { ready: isKnowledgeReady(projectPath) };
-});
-
-ipcMain.handle("nestbrain:projects:makeReady", async (_e, projectPath: string) => {
-  if (typeof projectPath !== "string" || !projectPath) throw new Error("invalid path");
-  makeProjectKnowledgeReady(projectPath);
-  return { ready: true };
-});
-
-// Pick an external folder and import it into NestBrain/Projects (excluding
-// build dirs), then make it knowledge-ready.
-ipcMain.handle("nestbrain:projects:import", async () => {
-  if (!mainWindow) return null;
-  const b = readBootstrap();
-  if (!b.nestBrainPath) throw new Error("NestBrain workspace not set");
-  const res = await dialog.showOpenDialog(mainWindow, {
-    title: "Import a project into NestBrain",
-    properties: ["openDirectory"],
-    buttonLabel: "Import",
-  });
-  if (res.canceled || res.filePaths.length === 0) return null;
-  const src = res.filePaths[0];
-  const name = basename(src);
-  let dest = join(b.nestBrainPath, "Projects", name);
-  let i = 2;
-  while (existsSync(dest)) dest = join(b.nestBrainPath, "Projects", `${name}-${i++}`);
-  const SKIP = new Set(["node_modules", ".next", "dist", "build", ".turbo", ".DS_Store"]);
-  cpSync(src, dest, { recursive: true, filter: (s) => !SKIP.has(basename(s)) });
-  makeProjectKnowledgeReady(dest);
-  return { projectPath: dest, name: basename(dest) };
-});
-
-// === Terminal (PTY) session management ===
-interface PtySession {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  proc: any;
-  cwd: string;
-}
-const ptySessions = new Map<string, PtySession>();
-let nextSessionId = 1;
-
-function getShell(): { shell: string; args: string[] } {
-  if (process.platform === "win32") {
-    return { shell: process.env.ComSpec || "powershell.exe", args: [] };
-  }
-  // Prefer the user's configured shell; fall back to common shells that
-  // actually exist on the system.
-  const candidates = [
-    process.env.SHELL,
-    "/bin/zsh",
-    "/bin/bash",
-    "/bin/sh",
-  ].filter((s): s is string => !!s);
-  for (const s of candidates) {
-    if (existsSync(s)) {
-      return { shell: s, args: ["-l"] };
-    }
-  }
-  return { shell: "/bin/sh", args: [] };
-}
-
-function sanitizeEnv(): Record<string, string> {
-  // node-pty requires all env values to be strings. Electron's process.env
-  // may contain non-string or undefined values that make posix_spawnp fail.
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(process.env)) {
-    if (typeof v === "string") out[k] = v;
-  }
-  // Drop Electron-specific vars that shouldn't leak into the user shell
-  for (const k of [
-    "ELECTRON_RUN_AS_NODE",
-    "ELECTRON_NO_ATTACH_CONSOLE",
-    "NODE_OPTIONS",
-  ]) {
-    delete out[k];
-  }
-  out.TERM = "xterm-256color";
-  out.COLORTERM = "truecolor";
-  return out;
-}
-
-ipcMain.handle(
-  "nestbrain:terminal:create",
-  (_e, { cwd, cols = 80, rows = 24 }: { cwd: string; cols?: number; rows?: number }) => {
-    if (!existsSync(cwd)) {
-      throw new Error(`cwd does not exist: ${cwd}`);
-    }
-    const { shell: shellPath, args } = getShell();
-    console.log(`[pty] spawning shell=${shellPath} args=${JSON.stringify(args)} cwd=${cwd}`);
-    if (!pty) {
-      throw new Error(
-        "Terminal is not available — the node-pty native module failed to load on this platform.",
-      );
-    }
-    const id = `t${nextSessionId++}`;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let proc: any;
-    try {
-      proc = pty.spawn(shellPath, args, {
-        name: "xterm-256color",
-        cols,
-        rows,
-        cwd,
-        env: sanitizeEnv(),
-      });
-    } catch (err) {
-      console.error(`[pty] spawn failed:`, err);
-      throw new Error(
-        `Failed to spawn shell ${shellPath}: ${err instanceof Error ? err.message : err}`,
-      );
-    }
-
-    proc.onData((data: string) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(`nestbrain:terminal:data:${id}`, data);
-      }
-    });
-    proc.onExit(({ exitCode }: { exitCode: number }) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(`nestbrain:terminal:exit:${id}`, exitCode);
-      }
-      ptySessions.delete(id);
-    });
-
-    ptySessions.set(id, { proc, cwd });
-    return { id, cwd };
-  },
-);
-
-ipcMain.on(
-  "nestbrain:terminal:write",
-  (_e, { id, data }: { id: string; data: string }) => {
-    const sess = ptySessions.get(id);
-    if (sess) sess.proc.write(data);
-  },
-);
-
-ipcMain.on(
-  "nestbrain:terminal:resize",
-  (_e, { id, cols, rows }: { id: string; cols: number; rows: number }) => {
-    const sess = ptySessions.get(id);
-    if (sess) {
-      try {
-        sess.proc.resize(cols, rows);
-      } catch {
-        /* process may have already exited */
-      }
-    }
-  },
-);
-
-ipcMain.on("nestbrain:terminal:kill", (_e, { id }: { id: string }) => {
-  const sess = ptySessions.get(id);
-  if (sess) {
-    try {
-      sess.proc.kill();
-    } catch {
-      /* ignore */
-    }
-    ptySessions.delete(id);
-  }
+// ====== Dev module (Enterprise add-on) ======
+// Terminal, git and Projects backends live in the private nestbrain-modules
+// repo (open-core). Public source builds have no impl → knowledge core only.
+const devModule: DevModuleApi | null = loadDevModule({
+  ipcMain,
+  dialog,
+  getMainWindow: () => mainWindow,
+  getNestBrainPath: () => readBootstrap().nestBrainPath ?? null,
+  runNestbrainCli,
+  hookCliCommand,
 });
 
 // === Directory listing (for file tree) ===
@@ -966,17 +783,6 @@ function moveDir(src: string, dst: string): void {
   }
 }
 
-function killAllPtySessions(): void {
-  for (const [id, sess] of ptySessions) {
-    try {
-      sess.proc.kill();
-    } catch {
-      /* ignore */
-    }
-    ptySessions.delete(id);
-  }
-}
-
 // ===== NestBrain auto-refresh watcher =====
 // Recursively watches the NestBrain directory and emits a debounced
 // `nestbrain:fs:changed` event to the renderer so the file tree refreshes
@@ -1116,7 +922,7 @@ ipcMain.handle(
     // handles, open file handles, env vars). In dev the Next server is
     // external (next dev), so we skip the kill+restart dance — the user
     // will need to restart `pnpm --filter @nestbrain/web dev` manually.
-    killAllPtySessions();
+    devModule?.killAllPtySessions();
     stopNestBrainWatcher();
     if (!isDev) await killNextServer();
 
@@ -1273,262 +1079,6 @@ ipcMain.handle("nestbrain:team:switch", async (_e, serverUrl: string, email: str
   if (!teamManager) throw new Error("Team not initialized");
   await teamManager.switchServer(serverUrl, email, password);
 });
-
-// ====== Git status for the file tree ======
-
-/**
- * Get the current branch + per-file status for a git repo. Returns null
- * when `repoPath` is not the top of a git working tree (so the file-tree
- * caller can cheaply ask "is this dir a repo?" and skip rendering markers
- * when it isn't). Status codes follow `git status --porcelain` (X column
- * = index, Y column = worktree). The map keys are paths RELATIVE to the
- * repo top, with POSIX separators, matching what `--porcelain` emits.
- */
-ipcMain.handle("nestbrain:git:status", async (_e, repoPath: string) => {
-  if (typeof repoPath !== "string" || !repoPath) return null;
-  return readGitStatus(repoPath);
-});
-
-/**
- * Walk up from any path looking for a git toplevel; if found, return the
- * repo path + full status. Used by the sidebar branch indicator so the
- * chip works for ANY focus path (editor file, terminal cwd) without
- * depending on the file tree having pre-registered the repo.
- */
-ipcMain.handle("nestbrain:git:findRepo", async (_e, anyPath: string) => {
-  if (typeof anyPath !== "string" || !anyPath) return null;
-  let top = "";
-  try {
-    top = execFileSync("git", ["-C", anyPath, "rev-parse", "--show-toplevel"], {
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 1500,
-    }).trim();
-  } catch {
-    return null;
-  }
-  if (!top) return null;
-  const status = readGitStatus(top);
-  return status ? { repoPath: top, status } : null;
-});
-
-/**
- * Run an arbitrary git subcommand inside `repoPath`. Used by the source
- * control panel for stage / unstage / discard / commit / push / pull /
- * stash. We never pipe untrusted input as a flag — every call site below
- * lists its own arg array, so a malicious "filename" can't impersonate a
- * `--upload-pack` etc.
- *
- * The wrapper:
- *   • caps stdout/stderr at 5 MB (operations like `git status` on huge
- *     repos can otherwise lock up the renderer waiting for IPC)
- *   • sets a 30 s timeout (push/pull can be slow on bad networks)
- *   • returns { ok, stdout, stderr } so the UI can show inline errors
- *     rather than crashing on a thrown promise.
- */
-interface GitRunResult {
-  ok: boolean;
-  stdout: string;
-  stderr: string;
-}
-
-function runGit(repoPath: string, args: string[], timeoutMs = 30_000): GitRunResult {
-  try {
-    const out = execFileSync("git", ["-C", repoPath, ...args], {
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "pipe"],
-      maxBuffer: 5 * 1024 * 1024,
-      timeout: timeoutMs,
-    });
-    return { ok: true, stdout: out, stderr: "" };
-  } catch (err) {
-    const e = err as { stdout?: Buffer | string; stderr?: Buffer | string; message?: string };
-    return {
-      ok: false,
-      stdout: typeof e.stdout === "string" ? e.stdout : e.stdout?.toString() ?? "",
-      stderr:
-        (typeof e.stderr === "string" ? e.stderr : e.stderr?.toString() ?? "") ||
-        e.message ||
-        "git command failed",
-    };
-  }
-}
-
-function assertRepo(repoPath: unknown): asserts repoPath is string {
-  if (typeof repoPath !== "string" || !repoPath) {
-    throw new Error("repoPath required");
-  }
-}
-
-function assertPaths(paths: unknown): asserts paths is string[] {
-  if (!Array.isArray(paths) || paths.some((p) => typeof p !== "string" || !p)) {
-    throw new Error("paths must be a non-empty string array");
-  }
-}
-
-ipcMain.handle("nestbrain:git:stage", async (_e, repoPath: string, paths: string[]) => {
-  assertRepo(repoPath); assertPaths(paths);
-  return runGit(repoPath, ["add", "--", ...paths], 10_000);
-});
-
-ipcMain.handle("nestbrain:git:unstage", async (_e, repoPath: string, paths: string[]) => {
-  assertRepo(repoPath); assertPaths(paths);
-  return runGit(repoPath, ["restore", "--staged", "--", ...paths], 10_000);
-});
-
-ipcMain.handle("nestbrain:git:discard", async (_e, repoPath: string, paths: string[]) => {
-  assertRepo(repoPath); assertPaths(paths);
-  // For tracked-but-modified files: `git restore`. For untracked files
-  // (which `restore` can't touch), `git clean -f --` removes them. We run
-  // both unconditionally; the one that doesn't apply is a silent no-op.
-  const r1 = runGit(repoPath, ["restore", "--worktree", "--", ...paths], 10_000);
-  const r2 = runGit(repoPath, ["clean", "-fd", "--", ...paths], 10_000);
-  return {
-    ok: r1.ok && r2.ok,
-    stdout: `${r1.stdout}${r2.stdout}`,
-    stderr: `${r1.stderr}${r2.stderr}`,
-  };
-});
-
-ipcMain.handle("nestbrain:git:commit", async (_e, repoPath: string, message: string) => {
-  assertRepo(repoPath);
-  if (typeof message !== "string" || !message.trim()) {
-    throw new Error("commit message required");
-  }
-  return runGit(repoPath, ["commit", "-m", message], 15_000);
-});
-
-ipcMain.handle("nestbrain:git:push", async (_e, repoPath: string) => {
-  assertRepo(repoPath);
-  return runGit(repoPath, ["push"], 60_000);
-});
-
-ipcMain.handle("nestbrain:git:pull", async (_e, repoPath: string) => {
-  assertRepo(repoPath);
-  return runGit(repoPath, ["pull", "--ff-only"], 60_000);
-});
-
-interface StashEntry {
-  ref: string;
-  message: string;
-}
-
-ipcMain.handle("nestbrain:git:stashList", async (_e, repoPath: string) => {
-  assertRepo(repoPath);
-  const r = runGit(repoPath, ["stash", "list", "--format=%gd%x09%gs"], 5_000);
-  if (!r.ok) return { ok: false, stdout: r.stdout, stderr: r.stderr, stashes: [] as StashEntry[] };
-  const stashes: StashEntry[] = [];
-  for (const line of r.stdout.split("\n")) {
-    if (!line.trim()) continue;
-    const [ref, ...rest] = line.split("\t");
-    stashes.push({ ref, message: rest.join("\t") });
-  }
-  return { ok: true, stdout: r.stdout, stderr: "", stashes };
-});
-
-ipcMain.handle(
-  "nestbrain:git:stashPush",
-  async (_e, repoPath: string, message?: string, includeUntracked?: boolean) => {
-    assertRepo(repoPath);
-    const args = ["stash", "push"];
-    if (includeUntracked) args.push("-u");
-    if (message && message.trim()) args.push("-m", message.trim());
-    return runGit(repoPath, args, 15_000);
-  },
-);
-
-ipcMain.handle("nestbrain:git:stashPop", async (_e, repoPath: string, ref?: string) => {
-  assertRepo(repoPath);
-  const args = ["stash", "pop"];
-  if (ref && typeof ref === "string") args.push(ref);
-  return runGit(repoPath, args, 15_000);
-});
-
-ipcMain.handle("nestbrain:git:stashDrop", async (_e, repoPath: string, ref: string) => {
-  assertRepo(repoPath);
-  if (typeof ref !== "string" || !ref) throw new Error("stash ref required");
-  return runGit(repoPath, ["stash", "drop", ref], 5_000);
-});
-
-interface GitFileStatus {
-  index: string; // 1 char, e.g. "M", " ", "?", "A", "D", "R"
-  worktree: string;
-}
-
-interface GitRepoStatus {
-  branch: string;
-  ahead: number;
-  behind: number;
-  /** True when the branch tracks a remote (push/pull are meaningful). */
-  hasUpstream: boolean;
-  files: Record<string, GitFileStatus>;
-}
-
-function readGitStatus(repoPath: string): GitRepoStatus | null {
-  // Quick "is this a repo?" check — avoids running git on every Projects/<name>/
-  // dir, most of which aren't git repos.
-  try {
-    const top = execFileSync("git", ["-C", repoPath, "rev-parse", "--show-toplevel"], {
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 1000,
-    }).trim();
-    // Only treat repoPath as a repo if it IS the top — otherwise we'd
-    // attribute child-project status to the parent.
-    if (resolve(top) !== resolve(repoPath)) return null;
-  } catch {
-    return null;
-  }
-
-  let branch = "";
-  let ahead = 0;
-  let behind = 0;
-  let hasUpstream = false;
-  const files: Record<string, GitFileStatus> = {};
-
-  try {
-    // -b puts a "## branch...origin/branch [ahead N, behind M]" header on the
-    // first line. -z null-terminates entries so filenames with spaces or
-    // newlines round-trip cleanly.
-    const out = execFileSync(
-      "git",
-      ["-C", repoPath, "status", "--porcelain=v1", "-b", "-z", "--untracked-files=all"],
-      { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"], timeout: 3000 },
-    );
-    const parts = out.split("\0");
-    if (parts.length > 0 && parts[0].startsWith("## ")) {
-      const header = parts.shift()!.slice(3);
-      // The "...origin/foo" segment is present iff the branch has an upstream
-      // configured; that's the cheap way to know whether push/pull are even
-      // meaningful (vs the branch being local-only with no remote tracking).
-      const m = /^([^.\s]+)(?:\.\.\.(\S+))?(?:\s+\[(.+)\])?/.exec(header);
-      if (m) {
-        branch = m[1] === "HEAD" ? "(detached)" : m[1];
-        hasUpstream = !!m[2];
-        const trailer = m[3] ?? "";
-        const a = /ahead (\d+)/.exec(trailer);
-        const b = /behind (\d+)/.exec(trailer);
-        if (a) ahead = Number(a[1]);
-        if (b) behind = Number(b[1]);
-      }
-    }
-    for (let i = 0; i < parts.length; i++) {
-      const entry = parts[i];
-      if (!entry) continue;
-      // Each entry is "XY path". Rename entries also push the rename source
-      // as the next null-separated chunk — we just skip it.
-      const code = entry.slice(0, 2);
-      const path = entry.slice(3);
-      if (code[0] === "R" || code[0] === "C") i += 1; // skip the rename src
-      if (!path) continue;
-      files[path] = { index: code[0], worktree: code[1] };
-    }
-  } catch {
-    /* repo present but command failed — return what we have */
-  }
-
-  return { branch, ahead, behind, hasUpstream, files };
-}
 
 // ====== CLI on PATH (macOS / Windows) ======
 
@@ -1874,10 +1424,7 @@ app.on("before-quit", () => {
   killNextServer();
   // Live node-pty children (integrated terminals) keep the process alive past
   // app.quit() — the classic "window gone, app still in the dock" zombie.
-  for (const [id, sess] of ptySessions) {
-    try { sess.proc.kill(); } catch { /* already gone */ }
-    ptySessions.delete(id);
-  }
+  devModule?.killAllPtySessions();
   armQuitFailsafe();
 });
 

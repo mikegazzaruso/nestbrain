@@ -14,7 +14,10 @@ NestBrain ingests raw documents (URLs, PDFs, GitHub repos, arXiv papers, YouTube
 nestbrain/
 ├── apps/
 │   ├── desktop/                # Electron 33 shell (main + preload + builder config)
-│   │   ├── src/main.ts         # Electron main: PATH fix, IPC, embedded server, PTY
+│   │   ├── src/main.ts         # Electron main: PATH fix, IPC, embedded server
+│   │   ├── src/dev-module.ts   # Open-core seam: guarded require of src/dev-impl/ (gitignored,
+│   │   │                       #   lives in the PRIVATE nestbrain-modules repo; CI overlays it,
+│   │   │                       #   local dev uses scripts/sync-modules.sh)
 │   │   ├── src/preload.ts      # Renderer-safe IPC bridge
 │   │   └── build/              # electron-builder hooks, icons, NSIS installer
 │   └── web/                    # Next.js 16 + React 19 UI (runs as standalone inside Electron)
@@ -145,6 +148,7 @@ Body…
 - All paths inside the wiki must be relative for portability between machines.
 - The Electron main on macOS does **not** inherit the user's shell PATH — `apps/desktop/src/main.ts` runs an inline `fix-path` equivalent so that spawning `claude` works regardless of where it's installed. Don't remove it.
 - `node-pty` is loaded with a `try/catch require` because a native-binding load failure must not crash the app — the terminal is optional.
+- **Modules (open-core)**: Enterprise add-ons (Dev = terminal/git/Projects; Anatomize planned) are gated twice — build-time (implementation only in the private `nestbrain-modules` repo, overlaid into `apps/desktop/src/dev-impl/` by CI or `scripts/sync-modules.sh`) and license-time (`module:<id>` in the org license features, served by the Team Server, decoded in `apps/desktop/src/modules.ts`). The renderer reads entitlement via `useModules()` (`apps/web/src/lib/modules-context.tsx`). Public source builds compile green without the overlay and run as the pure knowledge core.
 - `packages/sync` uses **chokidar 3** (CJS) on purpose — chokidar 4/5 are ESM-only and won't load from our CJS main bundle.
 - The Google OAuth Client ID + non-confidential Desktop client secret live in `packages/shared/src/constants.ts`. For OAuth client type "Desktop app" Google considers the secret non-confidential (PKCE is what actually secures the flow), so it's safe to embed in the distributed binary.
 - Sync details (architecture, exclude rules, conflict + delete semantics, the `drive.file` trade-off, known limits) are documented in [`docs/SYNC.md`](docs/SYNC.md). Read it before touching `packages/sync` or `apps/desktop/src/sync`.

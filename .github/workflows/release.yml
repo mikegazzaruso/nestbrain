@@ -52,6 +52,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Checkout proprietary modules (overlay)
+        # Open-core: module implementations live in the private
+        # nestbrain-modules repo. Official builds copy them into the
+        # gitignored seam paths (apps/desktop/src/dev-impl/) before
+        # building; public source builds simply don't have them.
+        uses: actions/checkout@v4
+        with:
+          repository: mikegazzaruso/nestbrain-modules
+          ssh-key: ${{ secrets.MODULES_DEPLOY_KEY }}
+          path: .modules
+
+      - name: Apply modules overlay
+        shell: bash
+        run: |
+          cp -R .modules/apps/. apps/
+          rm -rf .modules
+          ls apps/desktop/src/dev-impl/
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
@@ -144,6 +162,24 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Checkout proprietary modules (overlay)
+        # Open-core: module implementations live in the private
+        # nestbrain-modules repo. Official builds copy them into the
+        # gitignored seam paths (apps/desktop/src/dev-impl/) before
+        # building; public source builds simply don't have them.
+        uses: actions/checkout@v4
+        with:
+          repository: mikegazzaruso/nestbrain-modules
+          ssh-key: ${{ secrets.MODULES_DEPLOY_KEY }}
+          path: .modules
+
+      - name: Apply modules overlay
+        shell: bash
+        run: |
+          cp -R .modules/apps/. apps/
+          rm -rf .modules
+          ls apps/desktop/src/dev-impl/
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4

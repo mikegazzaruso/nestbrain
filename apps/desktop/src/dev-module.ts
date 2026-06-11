@@ -1,0 +1,49 @@
+import type { BrowserWindow, Dialog, IpcMain } from "electron";
+
+// Open-core seam for the Dev module (terminal, git, Projects backends).
+//
+// The implementation lives in the PRIVATE nestbrain-modules repo and is
+// copied into ./dev-impl/ only for official builds (CI overlay) or local dev
+// (scripts/sync-modules.sh) — the directory is gitignored here. A guarded
+// require keeps public source builds compiling and running as the pure
+// knowledge core: no impl → no IPC backends → `builtInModules()` reports
+// none and the renderer never shows the Dev surfaces.
+
+export interface DevModuleDeps {
+  ipcMain: IpcMain;
+  dialog: Dialog;
+  getMainWindow: () => BrowserWindow | null;
+  getNestBrainPath: () => string | null;
+  /** Run the bundled (or PATH) nestbrain CLI. */
+  runNestbrainCli: (args: string[]) => void;
+  /** Command the installed git hook should invoke at commit time. */
+  hookCliCommand: () => string;
+}
+
+export interface DevModuleApi {
+  killAllPtySessions: () => void;
+}
+
+interface DevImpl {
+  MODULES: string[];
+  register: (deps: DevModuleDeps) => DevModuleApi;
+}
+
+function loadImpl(): DevImpl | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require("./dev-impl") as DevImpl;
+  } catch {
+    return null;
+  }
+}
+
+const impl = loadImpl();
+
+export function builtInModules(): readonly string[] {
+  return impl?.MODULES ?? [];
+}
+
+export function loadDevModule(deps: DevModuleDeps): DevModuleApi | null {
+  return impl ? impl.register(deps) : null;
+}
