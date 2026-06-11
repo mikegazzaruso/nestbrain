@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTheme } from "@/lib/theme-context";
+
+// The map is canvas-drawn outside React, so theme reaches the standalone draw
+// helpers through this module-level flag, kept in sync by an effect.
+let mmLight = false;
 
 /**
  * Mind Map
@@ -289,6 +294,9 @@ function buildLayout(data: GraphData): LayoutResult {
 
 export default function MindMapPage() {
   const router = useRouter();
+  const { theme } = useTheme();
+  const light = theme === "light";
+  useEffect(() => { mmLight = light; }, [light]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
@@ -792,7 +800,7 @@ export default function MindMapPage() {
         </div>
       </div>
 
-      <div ref={containerRef} className="flex-1 relative" style={{ background: "#05060d" }}>
+      <div ref={containerRef} className="flex-1 relative" style={{ background: light ? "#eef2f8" : "#05060d" }}>
         {graphData.nodes.length === 0 ? (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center text-muted">
@@ -861,14 +869,20 @@ function lerp(a: number, b: number, t: number): number { return a + (b - a) * t;
 function drawBackground(ctx: CanvasRenderingContext2D, W: number, H: number) {
   const cx = W / 2, cy = H / 2;
   const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.7);
-  g.addColorStop(0, "#0d1228");
-  g.addColorStop(0.6, "#07091a");
-  g.addColorStop(1, "#03040b");
+  if (mmLight) {
+    g.addColorStop(0, "#fbfcfe");
+    g.addColorStop(0.6, "#eef2f8");
+    g.addColorStop(1, "#e2e8f2");
+  } else {
+    g.addColorStop(0, "#0d1228");
+    g.addColorStop(0.6, "#07091a");
+    g.addColorStop(1, "#03040b");
+  }
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
 
   const step = 28;
-  ctx.fillStyle = "rgba(150, 170, 220, 0.06)";
+  ctx.fillStyle = mmLight ? "rgba(70, 90, 140, 0.10)" : "rgba(150, 170, 220, 0.06)";
   for (let y = step / 2; y < H; y += step) {
     for (let x = step / 2; x < W; x += step) {
       ctx.beginPath();
@@ -1065,14 +1079,14 @@ function rectsOverlap(a: LabelBox, b: LabelBox, gap: number): boolean {
 function drawLabelBox(ctx: CanvasRenderingContext2D, box: LabelBox, color: string, textAlpha: number, bgAlpha: number) {
   ctx.beginPath();
   ctx.roundRect(box.x, box.y, box.w, box.h, 5);
-  ctx.fillStyle = `rgba(8, 10, 24, ${bgAlpha})`;
+  ctx.fillStyle = mmLight ? `rgba(255, 255, 255, ${Math.min(1, bgAlpha + 0.35)})` : `rgba(8, 10, 24, ${bgAlpha})`;
   ctx.fill();
-  ctx.strokeStyle = color + alpha(0.2 * textAlpha);
-  ctx.lineWidth = 0.6;
+  ctx.strokeStyle = color + alpha((mmLight ? 0.45 : 0.2) * textAlpha);
+  ctx.lineWidth = mmLight ? 0.8 : 0.6;
   ctx.stroke();
 
   ctx.font = `${box.weight} ${box.fs}px Inter, system-ui, sans-serif`;
-  ctx.fillStyle = `rgba(228, 233, 248, ${textAlpha})`;
+  ctx.fillStyle = mmLight ? `rgba(24, 28, 40, ${textAlpha})` : `rgba(228, 233, 248, ${textAlpha})`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(box.text, box.x + box.w / 2, box.y + box.h / 2);

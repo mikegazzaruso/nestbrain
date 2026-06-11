@@ -17,15 +17,15 @@
 /* Light theme */
 .light {
   --background: #ffffff;
-  --foreground: #1a1a1a;
-  --muted: #6b7280;
-  --border: #e5e7eb;
-  --card: #f9fafb;
-  --card-hover: #f3f4f6;
-  --accent: #4f7df0;
-  --accent-hover: #3b6ce0;
-  --sidebar: #f8f9fa;
-  --sidebar-border: #e5e7eb;
+  --foreground: #111418;
+  --muted: #515a67;
+  --border: #d3d8e0;
+  --card: #f4f6f9;
+  --card-hover: #e9edf3;
+  --accent: #3b6ce0;
+  --accent-hover: #2d59c4;
+  --sidebar: #eef1f5;
+  --sidebar-border: #d3d8e0;
 }
 
 @theme inline {
