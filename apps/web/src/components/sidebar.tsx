@@ -14,11 +14,13 @@ import {
   Settings,
   Sun,
   Moon,
+  Blocks,
 } from "lucide-react";
 import { CompileIndicator } from "./compile-indicator";
 import { FileTree } from "./file-tree";
 import { NewProjectModal } from "./new-project-modal";
 import { BranchIndicator } from "./branch-indicator";
+import { useModules } from "@/lib/modules-context";
 import { useTheme } from "@/lib/theme-context";
 import { useTerminal } from "@/lib/terminal-context";
 
@@ -40,6 +42,7 @@ const STORAGE_KEY = "nestbrain-sidebar-width";
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { modules } = useModules();
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const isDragging = useRef(false);
   const [nestBrainPath, setNestBrainPath] = useState<string | null>(null);
@@ -201,7 +204,11 @@ export function Sidebar() {
 
         {/* Navigation */}
         <nav className="flex-1 p-3 space-y-0.5 overflow-auto">
-          {navItems.map((item) => {
+          {[
+            ...navItems.slice(0, -1),
+            ...(modules.length > 0 ? [{ href: "/modules", icon: Blocks, label: "Modules" }] : []),
+            navItems[navItems.length - 1],
+          ].map((item) => {
             const isActive =
               pathname === item.href || pathname.startsWith(item.href + "/");
             const Icon = item.icon;

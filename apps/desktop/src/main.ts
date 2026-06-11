@@ -100,15 +100,19 @@ let authManager: AuthManager | null = null;
 let syncManager: SyncManager | null = null;
 let teamManager: TeamManager | null = null;
 
-const NESTBRAIN_SUBDIRS = [
+// Core workspace dirs — created for every install. Projects/ belongs to the
+// Dev module (created lazily when the module is entitled) and Team/ to the
+// Team Server (created on connect); neither is scaffolded for source/$29
+// installs. Both stay in the protected list so they can't be deleted/renamed
+// from the file tree once they exist.
+const CORE_SUBDIRS = [
   "Business",
   "Context",
   "Daily",
   "Library",
-  "Projects",
   "Skills",
-  "Team",
 ];
+const NESTBRAIN_SUBDIRS = [...CORE_SUBDIRS, "Projects", "Team"];
 
 interface Bootstrap {
   nestBrainPath?: string;
@@ -757,7 +761,7 @@ function copySkeletonToNestBrain(nestBrainPath: string): void {
 
 function createFreshNestBrain(nestBrainPath: string): void {
   mkdirSync(nestBrainPath, { recursive: true });
-  for (const sub of NESTBRAIN_SUBDIRS) {
+  for (const sub of CORE_SUBDIRS) {
     mkdirSync(join(nestBrainPath, sub), { recursive: true });
   }
   // NestBrain-generated wiki lives inside the user-visible Library folder
@@ -1035,7 +1039,16 @@ ipcMain.handle("nestbrain:team:getState", () => {
 // the org license the Team Server hands to signed-in members.
 ipcMain.handle("nestbrain:modules:get", async (): Promise<string[]> => {
   const token = (await teamManager?.getOrgLicense().catch(() => null)) ?? null;
-  return modulesFromLicense(token);
+  const mods = modulesFromLicense(token);
+  // Module dirs are created lazily, on entitlement: Projects/ exists only
+  // where the Dev module does.
+  if (mods.includes("dev")) {
+    const b = readBootstrap();
+    if (b.nestBrainPath) {
+      try { mkdirSync(join(b.nestBrainPath, "Projects"), { recursive: true }); } catch { /* ignore */ }
+    }
+  }
+  return mods;
 });
 ipcMain.handle("nestbrain:team:connect", async (_e, serverUrl: string, email: string, password: string) => {
   if (!teamManager) throw new Error("Team not initialized");

@@ -267,25 +267,6 @@ export function TeamSection() {
               </div>
             )}
 
-            {/* Per-device Projects/ switch (shared with the WHOLE team) */}
-            <div className="flex items-start justify-between gap-4 pt-1">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium">Include Projects/ folder</p>
-                <p className="text-[11px] text-muted/60 leading-relaxed mt-0.5">
-                  Shares your <code className="text-accent/70 bg-accent/5 px-1 rounded">Projects/</code> folder
-                  through the team&apos;s global workspace — <b className="text-amber-300/90">everyone on the team</b> who
-                  enables this sees a merged view of each other&apos;s projects. Build artifacts and{" "}
-                  <code className="text-accent/70 bg-accent/5 px-1 rounded">.git</code> are excluded. Off by default.
-                </p>
-              </div>
-              <button
-                onClick={() => void window.nestbrain?.team.setIncludeProjects(!(state?.includeProjects ?? false))}
-                className={`relative w-10 h-[22px] rounded-full transition-colors shrink-0 ${state?.includeProjects ? "bg-accent" : "bg-border"}`}
-              >
-                <span className={`absolute top-[3px] h-4 w-4 rounded-full bg-white transition-transform ${state?.includeProjects ? "left-[22px]" : "left-[3px]"}`} />
-              </button>
-            </div>
-
             <MembersBlock
               members={members}
               // Only the CURRENT user being an admin gates add/remove — not

@@ -129,6 +129,13 @@ export class TeamManager {
       const { token, user } = await teamLogin(url, email, password);
       await saveToken(token);
       this.backend = new TeamBackend(url, token);
+      // Team/ is a Team-Server concept — scaffolded here on first connect,
+      // not at workspace creation (source/$29 installs never get it).
+      const root = this.opts.getWorkspacePath();
+      if (root) {
+        await mkdir(join(root, "Team"), { recursive: true });
+        await mkdir(join(root, "Library", "Knowledge"), { recursive: true });
+      }
       const cfg = await loadConfig();
       cfg.serverUrl = url;
       // Persist the identity (incl. role): init() restores it on app launch so
