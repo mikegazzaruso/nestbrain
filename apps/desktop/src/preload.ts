@@ -130,6 +130,8 @@ contextBridge.exposeInMainWorld("nestbrain", {
     removeMember: (id: string): Promise<unknown> => ipcRenderer.invoke("nestbrain:team:removeMember", id),
     selectWorkspace: (id: string): Promise<void> => ipcRenderer.invoke("nestbrain:team:selectWorkspace", id),
     syncNow: (): Promise<unknown> => ipcRenderer.invoke("nestbrain:team:syncNow"),
+    setIncludeProjects: (v: boolean): Promise<void> =>
+      ipcRenderer.invoke("nestbrain:team:setIncludeProjects", v),
     onStateChanged: (callback: (state: unknown) => void) => {
       const handler = (_e: unknown, state: unknown) => callback(state);
       ipcRenderer.on("nestbrain:team:stateChanged", handler);

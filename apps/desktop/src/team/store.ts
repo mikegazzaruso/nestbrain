@@ -43,6 +43,8 @@ export interface TeamConfig {
   /** Signed-in identity (incl. role) — restored on app launch so the UI knows
    *  the user is an admin without forcing a re-login. Not sensitive. */
   user?: { email: string; name: string; role: string };
+  /** Per-device: also sync Projects/ into the team's global workspace. */
+  includeProjects?: boolean;
   /** Last-synced manifest per workspace, used as the 3-way reconcile base. */
   bases?: Record<string, FileMap>;
 }

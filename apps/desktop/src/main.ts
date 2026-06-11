@@ -1255,6 +1255,11 @@ ipcMain.handle("nestbrain:team:syncNow", async () => {
   return teamManager.syncNow();
 });
 
+ipcMain.handle("nestbrain:team:setIncludeProjects", async (_e, v: boolean) => {
+  if (!teamManager) throw new Error("Team not initialized");
+  await teamManager.setIncludeProjects(!!v);
+});
+
 // ====== Git status for the file tree ======
 
 /**

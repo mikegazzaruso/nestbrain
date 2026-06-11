@@ -18,7 +18,13 @@ const IGNORE = new Set([".git", "node_modules", ".nestbrain", ".obsidian", "vect
  * hash is reused without reading/hashing the file — mirroring the Drive
  * engine's mtime/size fast-path so an unchanged tree costs only stat()s.
  */
-export async function walkLocal(dir: string, cache: FileMap = {}, root = dir, out: FileMap = {}): Promise<FileMap> {
+export async function walkLocal(
+  dir: string,
+  cache: FileMap = {},
+  root = dir,
+  out: FileMap = {},
+  extraIgnore?: ReadonlySet<string>,
+): Promise<FileMap> {
   let entries;
   try {
     entries = await readdir(dir, { withFileTypes: true });
@@ -26,10 +32,10 @@ export async function walkLocal(dir: string, cache: FileMap = {}, root = dir, ou
     return out;
   }
   for (const e of entries) {
-    if (e.name.startsWith(".") || IGNORE.has(e.name)) continue;
+    if (e.name.startsWith(".") || IGNORE.has(e.name) || extraIgnore?.has(e.name)) continue;
     const full = join(dir, e.name);
     if (e.isDirectory()) {
-      await walkLocal(full, cache, root, out);
+      await walkLocal(full, cache, root, out, extraIgnore);
     } else {
       const rel = relative(root, full).split(sep).join("/");
       const st = await stat(full);
@@ -81,6 +87,9 @@ export interface SyncRoot {
   dir: string;
   prefix: string;
   index: boolean;
+  /** Top-level entry names to skip in this root's walk (e.g. "Nests" so the
+   *  global workspace never swallows the restricted subtrees). */
+  ignore?: string[];
 }
 
 /**
@@ -105,8 +114,17 @@ export async function runSync(
   roots: SyncRoot[],
   base: FileMap,
   maxRetries = 5,
+  readOnly = false,
+  skipPrefixes: string[] = [],
 ): Promise<SyncResult> {
+  // Server paths under a skipped prefix (e.g. "Projects/" when this device
+  // opted out) are not ours to manage: they're excluded from the diff and
+  // carried through commits untouched, so opting out never deletes them.
+  const skipped = (p: string) => skipPrefixes.some((s) => p.startsWith(s));
   let cur = base;
+  if (skipPrefixes.length) {
+    cur = Object.fromEntries(Object.entries(cur).filter(([p]) => !skipped(p)));
+  }
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     // Walk every root into a single prefixed local map, reusing the matching
     // slice of `cur` as each root's mtime/size→hash cache.
@@ -116,17 +134,47 @@ export async function runSync(
       for (const [k, v] of Object.entries(cur)) {
         if (resolveRoot(roots, k).root.dir === r.dir) subCache[resolveRoot(roots, k).rel] = v;
       }
-      const sub = await walkLocal(r.dir, subCache);
+      const sub = await walkLocal(r.dir, subCache, r.dir, {}, r.ignore ? new Set(r.ignore) : undefined);
       for (const [rel, entry] of Object.entries(sub)) local[r.prefix + rel] = entry;
     }
 
     const remote = await backend.getManifest(workspaceId);
-    const actions = diffFiles(cur, local, remote.files);
+    let actions = diffFiles(cur, local, remote.files);
+    if (skipPrefixes.length) actions = actions.filter((a) => !skipped(a.path));
 
     // Nothing differs between local and remote → don't churn a new manifest
     // version (important for the idle background poll). Adopt remote as base.
     if (actions.length === 0) {
       return { version: remote.version, base: remote.files, conflicts: [], uploaded: 0, downloaded: 0, changed: [] };
+    }
+
+    // Read-only (reader role): apply downloads/deletes locally, never upload,
+    // never commit — the server would 403 a reader's writes anyway. Local
+    // edits simply stay local (and keep re-appearing as skipped uploads).
+    if (readOnly) {
+      const changed: string[] = [];
+      let downloaded = 0;
+      for (const a of actions) {
+        const { root, rel } = resolveRoot(roots, a.path);
+        if (a.action === "download") {
+          const entry = remote.files[a.path];
+          await writeLocalFile(root.dir, rel, await backend.getBlob(workspaceId, entry.hash));
+          downloaded++;
+          changed.push(a.path);
+        } else if (a.action === "keep-both") {
+          // Reader edited a file locally AND remote moved: keep their local
+          // copy untouched, land the remote next to it as .conflict-….
+          const rentry = remote.files[a.path];
+          const cpath = conflictName(a.path);
+          const c = resolveRoot(roots, cpath);
+          await writeLocalFile(c.root.dir, c.rel, await backend.getBlob(workspaceId, rentry.hash));
+          downloaded++;
+          changed.push(cpath);
+        } else if (a.action === "delete-local") {
+          await rm(join(root.dir, rel), { force: true });
+        }
+      }
+      return { version: remote.version, base: remote.files, conflicts: [], uploaded: 0, downloaded, changed };
     }
 
     const newFiles: FileMap = {};
@@ -137,6 +185,10 @@ export async function runSync(
 
     for (const p of Object.keys(local)) {
       if (local[p].hash === remote.files[p]?.hash) newFiles[p] = local[p];
+    }
+    // Carry skipped-prefix entries through the commit untouched.
+    for (const [p, e] of Object.entries(remote.files)) {
+      if (skipped(p)) newFiles[p] = e;
     }
 
     for (const a of actions) {

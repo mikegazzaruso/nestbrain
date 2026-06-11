@@ -43,7 +43,8 @@ declare global {
     user?: { email: string; name: string; role: string };
     license?: { org: string; seats: number; exp: number | null; dev: boolean };
     workspaceId?: string;
-    workspaces?: { id: string; name: string }[];
+    workspaces?: { id: string; name: string; isGlobal?: boolean; role?: "writer" | "reader" }[];
+    includeProjects?: boolean;
     syncing: boolean;
     lastSync?: number;
     lastResult?: { uploaded: number; downloaded: number; conflicts: number };
@@ -120,6 +121,7 @@ declare global {
         removeMember: (id: string) => Promise<unknown>;
         selectWorkspace: (id: string) => Promise<void>;
         syncNow: () => Promise<{ uploaded: number; downloaded: number; conflicts: number } | undefined>;
+        setIncludeProjects: (v: boolean) => Promise<void>;
         onStateChanged: (callback: (state: TeamState) => void) => () => void;
       };
       terminal: {

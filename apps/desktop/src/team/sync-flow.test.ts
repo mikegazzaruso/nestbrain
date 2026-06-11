@@ -86,3 +86,59 @@ describe("team runSync — Library/Knowledge + Team/ with server prefixes", () =
     expect(down.changed.filter((p) => !p.startsWith("Team/"))).toEqual(["flux.md"]);
   });
 });
+
+describe("Nests, reader role, Projects opt-out", () => {
+  let a: string;
+  let b: string;
+  beforeEach(async () => {
+    a = await mkdtemp(join(tmpdir(), "nb-nestA-"));
+    b = await mkdtemp(join(tmpdir(), "nb-nestB-"));
+  });
+  afterEach(async () => {
+    await rm(a, { recursive: true, force: true });
+    await rm(b, { recursive: true, force: true });
+  });
+
+  it("global walk skips Nests/ subtrees; opted-out Projects pass through commits untouched", async () => {
+    const backend = new FakeBackend() as unknown as SyncBackend & FakeBackend;
+    // Remote already holds someone else's project file.
+    backend.version = 1;
+    backend.files = { "Projects/app/main.ts": { hash: "h-proj", size: 1, mtime: 1 } };
+    backend.blobs.set("h-proj", new TextEncoder().encode("x"));
+
+    await mkdir(join(a, "Library", "Knowledge", "Nests", "Eng"), { recursive: true });
+    await mkdir(join(a, "Team"), { recursive: true });
+    await writeFile(join(a, "Library", "Knowledge", "global.md"), "# g");
+    await writeFile(join(a, "Library", "Knowledge", "Nests", "Eng", "secret.md"), "# s");
+
+    const roots: SyncRoot[] = [
+      { dir: join(a, "Library", "Knowledge"), prefix: "", index: true, ignore: ["Nests"] },
+      { dir: join(a, "Team"), prefix: "Team/", index: false, ignore: ["Nests"] },
+    ];
+    const res = await runSync(backend, "ws", roots, {}, 5, false, ["Projects/"]);
+
+    expect(res.uploaded).toBe(1); // only global.md — the Nest file never leaks into the global manifest
+    expect(backend.files["global.md"]).toBeDefined();
+    expect(backend.files["Nests/Eng/secret.md"]).toBeUndefined();
+    // Opted-out Projects entry survived the commit and wasn't downloaded.
+    expect(backend.files["Projects/app/main.ts"]).toBeDefined();
+    expect(existsSync(join(a, "Library", "Knowledge", "Projects"))).toBe(false);
+  });
+
+  it("reader is pull-only: downloads arrive, local edits never reach the server", async () => {
+    const backend = new FakeBackend() as unknown as SyncBackend & FakeBackend;
+    backend.version = 1;
+    backend.files = { "doc.md": { hash: "h-doc", size: 5, mtime: 1 } };
+    backend.blobs.set("h-doc", new TextEncoder().encode("# doc"));
+
+    await mkdir(join(b, "K"), { recursive: true });
+    await writeFile(join(b, "K", "mine.md"), "# mine"); // reader's local-only edit
+    const roots: SyncRoot[] = [{ dir: join(b, "K"), prefix: "", index: true }];
+
+    const res = await runSync(backend, "ws", roots, {}, 5, true);
+    expect(existsSync(join(b, "K", "doc.md"))).toBe(true); // pulled
+    expect(res.uploaded).toBe(0);
+    expect(backend.files["mine.md"]).toBeUndefined(); // never uploaded
+    expect(backend.version).toBe(1); // no commit happened
+  });
+});

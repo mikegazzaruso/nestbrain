@@ -24,6 +24,8 @@ export interface TeamState {
   syncing: boolean;
   lastSync?: number;
   lastResult?: { uploaded: number; downloaded: number; conflicts: number };
+  /** Per-device: Projects/ included in the team's global workspace. */
+  includeProjects?: boolean;
   error?: string;
 }
 
@@ -69,7 +71,13 @@ export class TeamManager {
     const [token, config] = await Promise.all([loadToken(), loadConfig()]);
     if (!token || !config.serverUrl) return;
     this.backend = new TeamBackend(config.serverUrl, token);
-    this.set({ status: "connected", serverUrl: config.serverUrl, workspaceId: config.workspaceId, user: config.user });
+    this.set({
+      status: "connected",
+      serverUrl: config.serverUrl,
+      workspaceId: config.workspaceId,
+      user: config.user,
+      includeProjects: config.includeProjects === true,
+    });
     // Best-effort hydrate (license + workspaces); don't fail init if offline.
     try {
       const [h, ws] = await Promise.all([teamHealth(config.serverUrl), this.backend.listWorkspaces()]);
@@ -184,41 +192,81 @@ export class TeamManager {
     this.set({ workspaceId: id });
   }
 
-  /**
-   * The two trees the team shares, in one workspace:
-   *  - Library/Knowledge → the compiled wiki (prefix "", indexed for search)
-   *  - Team/             → shared team notes (prefix "Team/", NOT indexed)
-   * Team notes sync like any file but never enter the knowledge vector store.
-   */
-  private syncRoots(root: string): SyncRoot[] {
-    return [
-      { dir: join(root, "Library", "Knowledge"), prefix: "", index: true },
-      { dir: join(root, "Team"), prefix: "Team/", index: false },
-    ];
+  /** Filesystem-safe folder name for a Nest. */
+  private static safeName(name: string): string {
+    return name.replace(/[/\\:*?"<>|]/g, "-").trim() || "Nest";
   }
 
-  /** Sync Library/Knowledge + Team/ ↔ the selected team workspace. */
+  /**
+   * The trees a workspace syncs.
+   * Global workspace: Library/Knowledge (indexed) + Team/ notes — both
+   * excluding the Nests/ subtrees, which belong to other manifests — plus,
+   * when the per-device switch is on, the Projects/ folder.
+   * Nest: its own Library/Knowledge/Nests/<Name> + Team/Nests/<Name>.
+   */
+  private syncRoots(root: string, ws: RemoteWorkspace, includeProjects: boolean): SyncRoot[] {
+    if (ws.isGlobal === false) {
+      const safe = TeamManager.safeName(ws.name);
+      return [
+        { dir: join(root, "Library", "Knowledge", "Nests", safe), prefix: "", index: true },
+        { dir: join(root, "Team", "Nests", safe), prefix: "Team/", index: false },
+      ];
+    }
+    const roots: SyncRoot[] = [
+      { dir: join(root, "Library", "Knowledge"), prefix: "", index: true, ignore: ["Nests"] },
+      { dir: join(root, "Team"), prefix: "Team/", index: false, ignore: ["Nests"] },
+    ];
+    if (includeProjects) {
+      roots.push({ dir: join(root, "Projects"), prefix: "Projects/", index: false });
+    }
+    return roots;
+  }
+
+  /** Sync every workspace the member is entitled to (global + their Nests). */
   async syncNow(): Promise<TeamState["lastResult"]> {
     const backend = this.require();
-    const wsId = this.state.workspaceId;
-    if (!wsId) throw new Error("no workspace selected");
     const root = this.opts.getWorkspacePath();
     if (!root) throw new Error("no NestBrain workspace open");
-    const roots = this.syncRoots(root);
-    for (const r of roots) await mkdir(r.dir, { recursive: true });
+
+    // Pre-1.1 servers don't send isGlobal/role: keep the old single-workspace
+    // behavior against the selected id.
+    const all = this.state.workspaces ?? [];
+    const legacy = all.length > 0 && all[0].isGlobal === undefined;
+    const targets = legacy ? all.filter((w) => w.id === this.state.workspaceId) : all;
+    if (targets.length === 0) throw new Error("no workspace available");
 
     this.set({ syncing: true, error: undefined });
     try {
       const cfg = await loadConfig();
-      const base = cfg.bases?.[wsId] ?? {};
-      const result = await runSync(backend, wsId, roots, base);
-      cfg.bases = { ...(cfg.bases ?? {}), [wsId]: result.base };
+      const includeProjects = cfg.includeProjects === true;
+      let uploaded = 0;
+      let downloaded = 0;
+      let conflicts = 0;
+      const wikiRels: string[] = [];
+
+      for (const ws of targets) {
+        const roots = this.syncRoots(root, ws, includeProjects);
+        for (const r of roots) await mkdir(r.dir, { recursive: true });
+        const base = cfg.bases?.[ws.id] ?? {};
+        // The Projects/ subtree only syncs when this device opted in — without
+        // the root, its server entries must pass through untouched.
+        const skipPrefixes = ws.isGlobal !== false && !includeProjects ? ["Projects/"] : [];
+        const result = await runSync(backend, ws.id, roots, base, 5, ws.role === "reader", skipPrefixes);
+        cfg.bases = { ...(cfg.bases ?? {}), [ws.id]: result.base };
+        uploaded += result.uploaded;
+        downloaded += result.downloaded;
+        conflicts += result.conflicts.length;
+        this.lastVersion.set(ws.id, result.version);
+        // Map changed knowledge paths to wiki-relative for local indexing.
+        for (const p of result.changed) {
+          if (p.startsWith("Team/") || p.startsWith("Projects/")) continue;
+          wikiRels.push(ws.isGlobal === false ? `Nests/${TeamManager.safeName(ws.name)}/${p}` : p);
+        }
+      }
+
       await saveConfig(cfg);
-      // Re-index articles that arrived from teammates so they become
-      // searchable in this device's local vector store.
-      await this.indexArticles(result.changed);
-      const lastResult = { uploaded: result.uploaded, downloaded: result.downloaded, conflicts: result.conflicts.length };
-      this.lastVersion.set(wsId, result.version);
+      await this.indexArticles(wikiRels);
+      const lastResult = { uploaded, downloaded, conflicts };
       this.localDirty = false;
       this.suppressUntil = Date.now() + 8000; // ignore the watcher echo from files we just wrote
       this.set({ syncing: false, lastSync: Date.now(), lastResult });
@@ -229,13 +277,29 @@ export class TeamManager {
     }
   }
 
+  /** Per-device switch: include Projects/ in the team's global workspace. */
+  async setIncludeProjects(v: boolean): Promise<void> {
+    const cfg = await loadConfig();
+    cfg.includeProjects = v;
+    await saveConfig(cfg);
+    this.set({ includeProjects: v });
+    if (this.state.status === "connected") {
+      this.startAutoSync(); // re-create watchers with/without the Projects tree
+      void this.scheduleSync("local");
+    }
+  }
+
   // ── Auto-sync ──────────────────────────────────────────────────────
   private startAutoSync(): void {
     this.stopAutoSync();
     const root = this.opts.getWorkspacePath();
     if (!root) return;
-    // One watcher per shared tree (Library/Knowledge + Team/).
-    for (const r of this.syncRoots(root)) {
+    // Watch the shared trees. Library/Knowledge and Team/ recursively cover
+    // the Nests/ subtrees too; Projects/ gets its own watcher when opted in.
+    const dirs = [join(root, "Library", "Knowledge"), join(root, "Team")];
+    if (this.state.includeProjects) dirs.push(join(root, "Projects"));
+    for (const dir of dirs) {
+      const r = { dir };
       if (!existsSync(r.dir)) mkdirSync(r.dir, { recursive: true });
       const w = new WorkspaceWatcher({
         workspacePath: r.dir,
@@ -277,17 +341,22 @@ export class TeamManager {
 
   /** Background sync trigger (watcher or poll); non-fatal, never overlapping. */
   private async scheduleSync(reason: "local" | "poll"): Promise<void> {
-    if (this.state.status !== "connected" || !this.state.workspaceId || !this.backend) return;
+    if (this.state.status !== "connected" || !this.backend) return;
     if (this.state.syncing) return;
-    const wsId = this.state.workspaceId;
+    const wss = this.state.workspaces ?? [];
+    if (wss.length === 0) return;
 
-    // Idle poll: do a tiny version check first. If the remote head hasn't moved
-    // and we have no pending local edits, there's nothing to do — exit in ms,
-    // no walk, no full manifest. (Mirrors the Drive engine's delta fast-path.)
+    // Idle poll: cheap head-version checks first — sync only if any entitled
+    // workspace moved or we have pending local edits. (Mirrors the Drive
+    // engine's delta fast-path.)
     if (reason === "poll" && !this.localDirty) {
       try {
-        const v = await this.backend.getVersion(wsId);
-        if (v === this.lastVersion.get(wsId)) return;
+        let moved = false;
+        for (const ws of wss) {
+          const v = await this.backend.getVersion(ws.id);
+          if (v !== this.lastVersion.get(ws.id)) { moved = true; break; }
+        }
+        if (!moved) return;
       } catch {
         return; // offline — skip this tick
       }

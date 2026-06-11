@@ -32,6 +32,10 @@ export interface RemoteManifest {
 export interface RemoteWorkspace {
   id: string;
   name: string;
+  /** Org-wide knowledge everyone can access (vs a restricted Nest). */
+  isGlobal?: boolean;
+  /** Caller's effective role: writers contribute, readers are pull-only. */
+  role?: "writer" | "reader";
 }
 
 /** Outcome of a commit: accepted (new head) or rejected (stale base). */

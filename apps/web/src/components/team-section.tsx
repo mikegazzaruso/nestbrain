@@ -231,6 +231,48 @@ export function TeamSection() {
               merge what you need, then delete the copy. Nothing is ever silently overwritten.
             </p>
 
+            {/* Nests this member is entitled to (besides the global knowledge) */}
+            {(state?.workspaces ?? []).some((w) => w.isGlobal === false) && (
+              <div>
+                <p className="text-[11px] text-muted/50 uppercase tracking-wider mb-2">Your Nests</p>
+                <div className="flex flex-wrap gap-2">
+                  {(state?.workspaces ?? [])
+                    .filter((w) => w.isGlobal === false)
+                    .map((w) => (
+                      <span
+                        key={w.id}
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-violet-500/10 border border-violet-500/25 text-[11px] text-violet-200"
+                        title={`Synced to Library/Knowledge/Nests/${w.name}`}
+                      >
+                        {w.name}
+                        <span className={`text-[9px] px-1 py-px rounded-full ${w.role === "reader" ? "bg-amber-500/15 text-amber-300" : "bg-green-500/15 text-green-300"}`}>
+                          {w.role === "reader" ? "read-only" : "writer"}
+                        </span>
+                      </span>
+                    ))}
+                </div>
+              </div>
+            )}
+
+            {/* Per-device Projects/ switch (shared with the WHOLE team) */}
+            <div className="flex items-start justify-between gap-4 pt-1">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium">Include Projects/ folder</p>
+                <p className="text-[11px] text-muted/60 leading-relaxed mt-0.5">
+                  Shares your <code className="text-accent/70 bg-accent/5 px-1 rounded">Projects/</code> folder
+                  through the team&apos;s global workspace — <b className="text-amber-300/90">everyone on the team</b> who
+                  enables this sees a merged view of each other&apos;s projects. Build artifacts and{" "}
+                  <code className="text-accent/70 bg-accent/5 px-1 rounded">.git</code> are excluded. Off by default.
+                </p>
+              </div>
+              <button
+                onClick={() => void window.nestbrain?.team.setIncludeProjects(!(state?.includeProjects ?? false))}
+                className={`relative w-10 h-[22px] rounded-full transition-colors shrink-0 ${state?.includeProjects ? "bg-accent" : "bg-border"}`}
+              >
+                <span className={`absolute top-[3px] h-4 w-4 rounded-full bg-white transition-transform ${state?.includeProjects ? "left-[22px]" : "left-[3px]"}`} />
+              </button>
+            </div>
+
             <MembersBlock
               members={members}
               // Only the CURRENT user being an admin gates add/remove — not
