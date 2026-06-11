@@ -111,4 +111,8 @@ export class TeamBackend implements SyncBackend {
   removeMember(id: string): Promise<unknown> {
     return this.json(`/members/${id}`, { method: "DELETE" });
   }
+  /** Org license token — Enterprise proof for the app's auto-update feed. */
+  getOrgLicense(): Promise<string | null> {
+    return this.json("/license").then((d) => (d as { license?: string | null }).license ?? null);
+  }
 }

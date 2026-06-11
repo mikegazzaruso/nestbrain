@@ -156,6 +156,20 @@ export class TeamManager {
   listMembers(): Promise<TeamMember[]> {
     return this.require().listMembers();
   }
+
+  // Enterprise update entitlement: the org license token, fetched once per
+  // session from the Team Server (it's verification-only — signed payload).
+  private orgLicense: string | null | undefined;
+  async getOrgLicense(): Promise<string | null> {
+    if (this.state.status !== "connected" || !this.backend) return null;
+    if (this.orgLicense !== undefined) return this.orgLicense;
+    try {
+      this.orgLicense = await this.backend.getOrgLicense();
+    } catch {
+      this.orgLicense = null;
+    }
+    return this.orgLicense;
+  }
   addMember(m: { email: string; name: string; password: string; role: string }): Promise<unknown> {
     return this.require().addMember(m);
   }

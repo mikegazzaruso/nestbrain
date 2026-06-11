@@ -1662,6 +1662,47 @@ ipcMain.handle("nestbrain:cli:uninstall", async () => {
   throw new Error("Unsupported platform");
 });
 
+// --- Update entitlement (phase 2) -----------------------------------------
+// Supporter ($29): the in-app Google sign-in proves the email; the licensing
+// service confirms the Polar purchase and mints a 30-day signed entitlement we
+// cache on disk. Enterprise: forward the org license from the Team Server.
+const LICENSING_BASE = "https://license.nestbrain.app";
+const ENTITLEMENT_FILE = () => join(app.getPath("userData"), "update-entitlement.json");
+
+async function getSupporterEntitlement(): Promise<string | null> {
+  try {
+    const cached = JSON.parse(readFileSync(ENTITLEMENT_FILE(), "utf-8")) as { token?: string; exp?: number };
+    // Reuse while >5 days of validity remain; refresh in the background after.
+    if (cached.token && cached.exp && cached.exp * 1000 > Date.now() + 5 * 86400_000) {
+      return cached.token;
+    }
+  } catch { /* no cache yet */ }
+
+  const idToken = await authManager?.getIdToken();
+  if (!idToken) return null;
+  try {
+    const res = await fetch(`${LICENSING_BASE}/entitlement/google`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken }),
+    });
+    if (!res.ok) return null; // not a purchaser (or service down) — fine
+    const d = (await res.json()) as { token: string; exp: number };
+    writeFileSync(ENTITLEMENT_FILE(), JSON.stringify({ token: d.token, exp: d.exp }));
+    return d.token;
+  } catch {
+    return null;
+  }
+}
+
+async function getUpdateCredentials(): Promise<{ entitlement?: string | null; license?: string | null }> {
+  const [entitlement, license] = await Promise.all([
+    getSupporterEntitlement(),
+    teamManager?.getOrgLicense() ?? Promise.resolve(null),
+  ]);
+  return { entitlement, license };
+}
+
 app.whenReady().then(async () => {
   // Black-window fix, part 3: macOS App Nap suspends the whole process when
   // the app is hidden long enough — on wake the GPU surface is gone and the
@@ -1765,9 +1806,13 @@ app.whenReady().then(async () => {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { initUpdater } = require("./updater.cjs") as {
-        initUpdater: (g: () => BrowserWindow | null, onBeforeQuit?: () => Promise<void>) => void;
+        initUpdater: (
+          g: () => BrowserWindow | null,
+          onBeforeQuit?: () => Promise<void>,
+          credentialsProvider?: () => Promise<{ entitlement?: string | null; license?: string | null }>,
+        ) => void;
       };
-      initUpdater(() => mainWindow, disposeWatchersForQuit);
+      initUpdater(() => mainWindow, disposeWatchersForQuit, getUpdateCredentials);
     } catch (e) {
       console.warn("[updates] updater bundle unavailable:", e instanceof Error ? e.message : e);
     }

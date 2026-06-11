@@ -26,6 +26,7 @@ declare global {
     available?: string;
     percent?: number;
     error?: string;
+    via?: "account" | "enterprise" | "build";
   }
 
   interface TeamMember {

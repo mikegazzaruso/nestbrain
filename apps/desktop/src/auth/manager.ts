@@ -115,6 +115,7 @@ export class AuthManager {
         expiresAt: refreshed.expiresAt,
         scope: refreshed.scope,
         tokenType: refreshed.tokenType,
+        idToken: refreshed.idToken ?? tokens.idToken,
       };
       this.session = { ...this.session, tokens: next };
       await saveSession(this.session);
@@ -125,6 +126,20 @@ export class AuthManager {
       await this.signOut();
       return null;
     }
+  }
+
+  /**
+   * Fresh Google id_token (proof of the signed-in email) for the update
+   * entitlement exchange. id_tokens share the access token's ~1h lifetime, so
+   * reuse the refresh path to get a current one.
+   */
+  async getIdToken(): Promise<string | null> {
+    if (!this.session) return null;
+    if (this.session.tokens.expiresAt - REFRESH_LEAD_MS > Date.now()) {
+      return this.session.tokens.idToken ?? null;
+    }
+    await this.getAccessToken(true);
+    return this.session?.tokens.idToken ?? null;
   }
 
   private setState(next: AuthState): void {

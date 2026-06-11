@@ -19,6 +19,16 @@ export interface UpdateState {
   /** Download progress 0..100 while status === "downloading". */
   percent?: number;
   error?: string;
+  /** Strongest entitlement attached to the last check. */
+  via?: "account" | "enterprise" | "build";
+}
+
+/** Per-plan proof attached to feed requests (phase 2 entitlement). */
+export interface UpdateCredentials {
+  /** Supporter entitlement token (minted from the in-app Google sign-in). */
+  entitlement?: string | null;
+  /** Enterprise org license token (from the connected Team Server). */
+  license?: string | null;
 }
 
 const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
@@ -26,6 +36,7 @@ const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
 let state: UpdateState = { status: "disabled", current: app.getVersion() };
 let getWindow: () => BrowserWindow | null = () => null;
 let prepareQuit: () => Promise<void> = async () => {};
+let getCredentials: () => Promise<UpdateCredentials> = async () => ({});
 
 function set(patch: Partial<UpdateState>): void {
   state = { ...state, ...patch };
@@ -38,9 +49,11 @@ function set(patch: Partial<UpdateState>): void {
 export function initUpdater(
   windowGetter: () => BrowserWindow | null,
   onBeforeQuit?: () => Promise<void>,
+  credentialsProvider?: () => Promise<UpdateCredentials>,
 ): void {
   getWindow = windowGetter;
   if (onBeforeQuit) prepareQuit = onBeforeQuit;
+  if (credentialsProvider) getCredentials = credentialsProvider;
 
   ipcMain.handle("nestbrain:updates:getState", () => state);
 
@@ -77,6 +90,30 @@ export function initUpdater(
   });
   autoUpdater.requestHeaders = { "x-update-key": UPDATE_CHANNEL_KEY };
 
+  // Refresh the per-plan proofs before every check (phase 2): supporter
+  // entitlement (from the in-app Google sign-in) and/or the Enterprise org
+  // license. The build key always rides along as the transition fallback.
+  async function checkWithCredentials(): Promise<void> {
+    const headers: Record<string, string> = { "x-update-key": UPDATE_CHANNEL_KEY };
+    let via: UpdateState["via"] = "build";
+    try {
+      const creds = await getCredentials();
+      if (creds.license) {
+        headers["x-license"] = creds.license;
+        via = "enterprise";
+      }
+      if (creds.entitlement) {
+        headers["x-entitlement"] = creds.entitlement;
+        via = "account";
+      }
+    } catch {
+      /* fall back to the build key alone */
+    }
+    autoUpdater.requestHeaders = headers;
+    set({ via });
+    await autoUpdater.checkForUpdates();
+  }
+
   autoUpdater.on("checking-for-update", () => set({ status: "checking", error: undefined }));
   autoUpdater.on("update-not-available", () => set({ status: "idle", available: undefined }));
   autoUpdater.on("update-available", (info) => set({ status: "downloading", available: info.version, percent: 0 }));
@@ -89,7 +126,7 @@ export function initUpdater(
 
   ipcMain.handle("nestbrain:updates:check", async () => {
     try {
-      await autoUpdater.checkForUpdates();
+      await checkWithCredentials();
     } catch {
       /* state already carries the error */
     }
@@ -113,6 +150,6 @@ export function initUpdater(
 
   state = { ...state, status: "idle" };
   // First check shortly after launch (let the window settle), then periodic.
-  setTimeout(() => void autoUpdater.checkForUpdates().catch(() => {}), 15_000);
-  setInterval(() => void autoUpdater.checkForUpdates().catch(() => {}), CHECK_EVERY_MS);
+  setTimeout(() => void checkWithCredentials().catch(() => {}), 15_000);
+  setInterval(() => void checkWithCredentials().catch(() => {}), CHECK_EVERY_MS);
 }

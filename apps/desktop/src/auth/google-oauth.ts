@@ -251,7 +251,9 @@ async function exchangeCodeForTokens(
  * Use a refresh_token to mint a new access_token without user interaction.
  * Google does NOT issue a new refresh_token here — keep reusing the original.
  */
-export async function refreshAccessToken(refreshToken: string): Promise<Pick<OAuthTokens, "accessToken" | "expiresAt" | "scope" | "tokenType">> {
+export async function refreshAccessToken(
+  refreshToken: string,
+): Promise<Pick<OAuthTokens, "accessToken" | "expiresAt" | "scope" | "tokenType"> & { idToken?: string }> {
   const body = new URLSearchParams({
     client_id: OAUTH_CLIENT_ID,
     client_secret: OAUTH_CLIENT_SECRET,
@@ -272,12 +274,14 @@ export async function refreshAccessToken(refreshToken: string): Promise<Pick<OAu
     expires_in: number;
     scope: string;
     token_type: string;
+    id_token?: string; // present because we request the openid scope
   };
   return {
     accessToken: json.access_token,
     expiresAt: Date.now() + json.expires_in * 1000,
     scope: json.scope,
     tokenType: json.token_type,
+    idToken: json.id_token,
   };
 }
 

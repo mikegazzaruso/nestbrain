@@ -43,7 +43,13 @@ export function UpdatesSection() {
           {state.status === "downloading" && (<><Download size={13} className="text-accent" /> Downloading {state.available}… {state.percent ?? 0}%</>)}
           {state.status === "ready" && (<><CheckCircle2 size={13} className="text-green-400" /> {state.available} ready — restarts into it on next quit</>)}
           {state.status === "error" && (<><AlertCircle size={13} className="text-amber-400" /> <span className="truncate">Couldn&apos;t check: {state.error}</span></>)}
-          {state.status === "idle" && (<><CheckCircle2 size={13} className="text-green-500/70" /> You&apos;re on {state.current} — up to date</>)}
+          {state.status === "idle" && (
+            <>
+              <CheckCircle2 size={13} className="text-green-500/70" /> You&apos;re on {state.current} — up to date
+              {state.via === "account" && <span className="text-muted/40">· via your account</span>}
+              {state.via === "enterprise" && <span className="text-muted/40">· via Enterprise license</span>}
+            </>
+          )}
         </div>
         {state.status === "ready" ? (
           <button
