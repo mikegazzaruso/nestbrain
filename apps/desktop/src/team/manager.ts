@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { existsSync, mkdirSync } from "node:fs";
 import { WorkspaceWatcher, type RemoteWorkspace } from "@nestbrain/sync";
 import {
@@ -146,6 +146,40 @@ export class TeamManager {
       this.set({ status: "error", error: msg });
       throw e;
     }
+  }
+
+  /**
+   * Guided server switch — the safe ordering, enforced in one place:
+   *  1. Validate the DESTINATION credentials first (bad password → nothing
+   *     is touched, you stay connected to the current server).
+   *  2. Stop the watchers BEFORE any local deletion, so removals can never
+   *     propagate to the old server as delete-remote.
+   *  3. Forget the old session/bases, wipe the team-synced trees locally
+   *     (Library/Knowledge + Team/ — never Projects/).
+   *  4. Connect to the new server and pull its knowledge.
+   */
+  async switchServer(serverUrl: string, email: string, password: string): Promise<void> {
+    const url = serverUrl.replace(/\/$/, "");
+    await teamLogin(url, email, password); // step 1 — throws before any damage
+
+    this.stopAutoSync(); // step 2
+    await clearToken();
+    await saveConfig({});
+    this.backend = null;
+    this.orgLicense = undefined;
+    this.lastVersion.clear();
+    this.localDirty = false;
+
+    const root = this.opts.getWorkspacePath(); // step 3
+    if (root) {
+      for (const dir of [join(root, "Library", "Knowledge"), join(root, "Team")]) {
+        await rm(dir, { recursive: true, force: true });
+        await mkdir(dir, { recursive: true });
+      }
+    }
+
+    await this.connect(url, email, password); // step 4 (starts auto-sync)
+    void this.syncNow().catch(() => { /* background pull; errors surface in state */ });
   }
 
   async disconnect(): Promise<void> {

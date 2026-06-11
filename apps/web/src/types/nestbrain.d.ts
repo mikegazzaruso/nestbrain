@@ -122,6 +122,7 @@ declare global {
         selectWorkspace: (id: string) => Promise<void>;
         syncNow: () => Promise<{ uploaded: number; downloaded: number; conflicts: number } | undefined>;
         setIncludeProjects: (v: boolean) => Promise<void>;
+        switch: (serverUrl: string, email: string, password: string) => Promise<void>;
         onStateChanged: (callback: (state: TeamState) => void) => () => void;
       };
       terminal: {

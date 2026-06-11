@@ -1260,6 +1260,11 @@ ipcMain.handle("nestbrain:team:setIncludeProjects", async (_e, v: boolean) => {
   await teamManager.setIncludeProjects(!!v);
 });
 
+ipcMain.handle("nestbrain:team:switch", async (_e, serverUrl: string, email: string, password: string) => {
+  if (!teamManager) throw new Error("Team not initialized");
+  await teamManager.switchServer(serverUrl, email, password);
+});
+
 // ====== Git status for the file tree ======
 
 /**

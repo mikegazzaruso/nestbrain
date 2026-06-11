@@ -35,6 +35,7 @@ export function TeamSection() {
   // Show the upsell by default; reveal the connect form on demand (or when a
   // server was remembered from a previous session).
   const [showConnect, setShowConnect] = useState(false);
+  const [switching, setSwitching] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.nestbrain?.team) {
@@ -173,13 +174,25 @@ export function TeamSection() {
                 <span className="w-2 h-2 rounded-full bg-green-400" />
                 Connected · <span className="font-mono text-muted/60">{state?.serverUrl}</span>
               </div>
-              <button
-                onClick={() => window.nestbrain?.team.disconnect()}
-                className="flex items-center gap-1.5 text-[11px] text-muted/50 hover:text-red-400 transition-colors"
-              >
-                <LogOut size={12} /> Sign out
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setSwitching((v) => !v)}
+                  className="text-[11px] text-muted/50 hover:text-foreground transition-colors"
+                >
+                  Switch server…
+                </button>
+                <button
+                  onClick={() => window.nestbrain?.team.disconnect()}
+                  className="flex items-center gap-1.5 text-[11px] text-muted/50 hover:text-red-400 transition-colors"
+                >
+                  <LogOut size={12} /> Sign out
+                </button>
+              </div>
             </div>
+
+            {switching && (
+              <SwitchServerPanel currentUrl={state?.serverUrl} onDone={() => setSwitching(false)} />
+            )}
 
             {state?.license && <LicenseBadge license={state.license} usedSeats={members.length} />}
 
@@ -424,6 +437,61 @@ function UpsellCard({ onConnect }: { onConnect: () => void }) {
         <button onClick={onConnect} className="text-[12px] text-muted/60 hover:text-foreground transition-colors">
           I already have a Team Server →
         </button>
+      </div>
+    </div>
+  );
+}
+
+function SwitchServerPanel({ currentUrl, onDone }: { currentUrl?: string; onDone: () => void }) {
+  const [url, setUrl] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function doSwitch() {
+    setBusy(true);
+    setError(null);
+    try {
+      await window.nestbrain!.team.switch(url.trim(), email.trim(), password);
+      onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "switch failed");
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div className="p-4 rounded-lg bg-background border border-amber-500/25 space-y-3">
+      <p className="text-[11px] text-amber-300/90 leading-relaxed">
+        <b>Switching servers replaces this device&apos;s team knowledge.</b> You&apos;ll be
+        disconnected from <span className="font-mono">{currentUrl}</span>, the synced{" "}
+        <code className="bg-amber-500/10 px-1 rounded">Library/Knowledge</code> and{" "}
+        <code className="bg-amber-500/10 px-1 rounded">Team/</code> folders are removed from this
+        device (the old server keeps everything; your Projects/ are untouched), then the new
+        server&apos;s knowledge is pulled. Done in the safe order — nothing is deleted remotely.
+      </p>
+      <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://team.other-company.com" className="w-full px-3 py-2 bg-card border border-border rounded-lg text-sm font-mono focus:outline-none focus:border-accent/50" />
+      <div className="grid grid-cols-2 gap-2">
+        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" className="px-3 py-2 bg-card border border-border rounded-lg text-sm focus:outline-none focus:border-accent/50" />
+        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="password" className="px-3 py-2 bg-card border border-border rounded-lg text-sm focus:outline-none focus:border-accent/50" />
+      </div>
+      <label className="flex items-start gap-2 text-[11px] text-muted/70 cursor-pointer">
+        <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} className="mt-0.5 accent-amber-400" />
+        I understand the team knowledge on this device will be replaced.
+      </label>
+      {error && <p className="text-[11px] text-red-400">{error}</p>}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={doSwitch}
+          disabled={busy || !confirmed || !url.trim() || !email.trim() || !password}
+          className="px-4 py-2 bg-amber-500/90 hover:bg-amber-400 text-background text-xs font-medium rounded-lg transition-colors disabled:opacity-40 flex items-center gap-2"
+        >
+          {busy && <Loader2 size={12} className="animate-spin" />}
+          Switch server
+        </button>
+        <button onClick={onDone} className="text-[11px] text-muted/60 hover:text-foreground">Cancel</button>
       </div>
     </div>
   );
