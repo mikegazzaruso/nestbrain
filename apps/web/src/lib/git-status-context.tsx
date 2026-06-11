@@ -1,15 +1,11 @@
 "use client";
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, type ReactNode } from "react";
+
+// Open-core stub — the real git-status cache ships with the Dev module
+// (private nestbrain-modules repo) and replaces this file in official
+// builds. The pure marker helpers stay real so the file tree compiles and
+// simply renders no markers (empty repos map).
 
 export interface GitFileStatus {
   index: string; // 1 char
@@ -24,11 +20,8 @@ export interface GitRepoStatus {
 }
 
 interface GitStatusState {
-  /** Map of repo path → latest status (or null if not a repo). */
   repos: Record<string, GitRepoStatus | null>;
-  /** Register a path as a candidate git repo; idempotent. */
   registerRepo: (repoPath: string) => void;
-  /** Force-refresh all registered repos right now. */
   refresh: () => void;
 }
 
@@ -38,87 +31,14 @@ const GitStatusContext = createContext<GitStatusState>({
   refresh: () => {},
 });
 
-/**
- * Centralized git-status cache for the file tree. The tree calls
- * `registerRepo(projectPath)` on the first render of each top-level
- * project; the provider re-fetches every repo on a debounced filesystem-
- * change event (the existing nestbrain:fs:changed channel) and on an
- * interval as a safety net for git ops that don't touch the tree (commit,
- * checkout). The state is shared so the FileTree and the status bar both
- * see the same numbers.
- */
 export function GitStatusProvider({ children }: { children: ReactNode }) {
-  const [repos, setRepos] = useState<Record<string, GitRepoStatus | null>>({});
-  const registered = useRef<Set<string>>(new Set());
-
-  const fetchOne = useCallback(async (path: string) => {
-    if (typeof window === "undefined" || !window.nestbrain?.git) return;
-    try {
-      const status = await window.nestbrain.git.status(path);
-      setRepos((cur) => ({ ...cur, [path]: status }));
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  const refresh = useCallback(() => {
-    for (const path of registered.current) void fetchOne(path);
-  }, [fetchOne]);
-
-  const registerRepo = useCallback(
-    (repoPath: string) => {
-      if (registered.current.has(repoPath)) return;
-      registered.current.add(repoPath);
-      void fetchOne(repoPath);
-    },
-    [fetchOne],
-  );
-
-  // Debounce filesystem-change events: many small writes (a save, a git
-  // command's intermediate stages) cluster into a single refresh.
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.nestbrain?.fs) return;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const off = window.nestbrain.fs.onChange(() => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(refresh, 400);
-    });
-    return () => {
-      if (timer) clearTimeout(timer);
-      off();
-    };
-  }, [refresh]);
-
-  // Periodic safety net — catches commits / checkouts done from an
-  // external terminal that don't touch any watched files. Kept long so the
-  // resulting `repos` map update (and the re-render cascade it triggers in
-  // every consumer of useGitStatus) doesn't show up as a periodic flash.
-  // chokidar fs events still drive sub-second refreshes for anything the
-  // user actually does.
-  useEffect(() => {
-    const id = setInterval(refresh, 30_000);
-    return () => clearInterval(id);
-  }, [refresh]);
-
-  const value = useMemo(
-    () => ({ repos, registerRepo, refresh }),
-    [repos, registerRepo, refresh],
-  );
-
-  return <GitStatusContext.Provider value={value}>{children}</GitStatusContext.Provider>;
+  return <>{children}</>;
 }
 
 export function useGitStatus() {
   return useContext(GitStatusContext);
 }
 
-/**
- * Convenience: derive the single-char marker for a path relative to a
- * registered repo. Returns "" when the path isn't tracked by the repo's
- * status. The marker is the worktree column when it carries information
- * (modified, untracked) and falls back to the index column otherwise
- * (staged add, staged delete) — that matches VSCode's behavior.
- */
 export function pickMarker(file: GitFileStatus | undefined): string {
   if (!file) return "";
   const w = file.worktree;
