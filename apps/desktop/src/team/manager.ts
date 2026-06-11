@@ -209,17 +209,23 @@ export class TeamManager {
     return this.require().listMembers();
   }
 
-  // Enterprise update entitlement: the org license token, fetched once per
-  // session from the Team Server (it's verification-only — signed payload).
+  // Enterprise entitlement: the org license token from the Team Server
+  // (verification-only — signed payload). Cached with a 10-minute TTL so
+  // central changes (e.g. a module purchase propagated via the rolling token)
+  // reach a running app within one refresh, not at next launch.
   private orgLicense: string | null | undefined;
+  private orgLicenseAt = 0;
   async getOrgLicense(): Promise<string | null> {
     if (this.state.status !== "connected" || !this.backend) return null;
-    if (this.orgLicense !== undefined) return this.orgLicense;
+    if (this.orgLicense !== undefined && Date.now() - this.orgLicenseAt < 10 * 60 * 1000) {
+      return this.orgLicense;
+    }
     try {
       this.orgLicense = await this.backend.getOrgLicense();
     } catch {
-      this.orgLicense = null;
+      if (this.orgLicense === undefined) this.orgLicense = null;
     }
+    this.orgLicenseAt = Date.now();
     return this.orgLicense;
   }
   addMember(m: { email: string; name: string; password: string; role: string }): Promise<unknown> {

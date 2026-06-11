@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Layers } from "lucide-react";
+import { useModules } from "@/lib/modules-context";
 
 interface ProjectEntry {
   project: string;
@@ -21,6 +22,7 @@ interface ProjectFilterProps {
  * showing an "All projects" dropdown with only one option is just chrome.
  */
 export function ProjectFilter({ value, onChange, className = "" }: ProjectFilterProps) {
+  const { has } = useModules();
   const [projects, setProjects] = useState<ProjectEntry[]>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -39,6 +41,7 @@ export function ProjectFilter({ value, onChange, className = "" }: ProjectFilter
     })();
   }, []);
 
+  if (!has("dev")) return null;
   if (!loaded || projects.length === 0) return null;
 
   return (

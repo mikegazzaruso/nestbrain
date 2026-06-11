@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTerminal } from "@/lib/terminal-context";
+import { useModules } from "@/lib/modules-context";
 import { IntegratedTerminal } from "./integrated-terminal";
 import { X, Terminal as TerminalIcon, ChevronDown, Plus } from "lucide-react";
 
@@ -11,6 +12,7 @@ const DEFAULT_HEIGHT = 280;
 const STORAGE_KEY = "nestbrain-terminal-height";
 
 export function TerminalPanel() {
+  const { has } = useModules();
   const { sessions, activeId, panelOpen, setActive, closeTerminal, togglePanel, newTerminal } =
     useTerminal();
   const [height, setHeight] = useState(DEFAULT_HEIGHT);
@@ -51,6 +53,7 @@ export function TerminalPanel() {
   // Don't unmount when hidden — keep xterm alive to preserve scrollback + prompt.
   // The panel just collapses to 0 height via CSS.
   const isVisible = panelOpen && sessions.length > 0;
+  if (!has("dev")) return null;
   if (sessions.length === 0) return null;
 
   return (

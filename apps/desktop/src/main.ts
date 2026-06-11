@@ -40,6 +40,7 @@ import { execFileSync, execSync, spawn } from "node:child_process";
 import { AuthManager } from "./auth";
 import { SyncManager } from "./sync";
 import { TeamManager } from "./team";
+import { modulesFromLicense } from "./modules";
 
 // On macOS, packaged Electron apps don't inherit the user's shell PATH —
 // they get a minimal PATH like /usr/bin:/bin which doesn't include common
@@ -1221,6 +1222,14 @@ ipcMain.handle("nestbrain:sync:hardDelete", async (_e, relPath: string) => {
 
 ipcMain.handle("nestbrain:team:getState", () => {
   return teamManager?.getState() ?? { status: "disconnected", syncing: false };
+});
+
+// ====== Modules (Enterprise add-ons) ======
+// Enabled = built into this binary AND licensed via `module:<id>` features in
+// the org license the Team Server hands to signed-in members.
+ipcMain.handle("nestbrain:modules:get", async (): Promise<string[]> => {
+  const token = (await teamManager?.getOrgLicense().catch(() => null)) ?? null;
+  return modulesFromLicense(token);
 });
 ipcMain.handle("nestbrain:team:connect", async (_e, serverUrl: string, email: string, password: string) => {
   if (!teamManager) throw new Error("Team not initialized");

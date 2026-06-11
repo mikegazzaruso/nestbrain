@@ -20,6 +20,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useSync } from "@/lib/sync-context";
+import { useModules } from "@/lib/modules-context";
 import { FileIcon } from "./file-icon";
 import { useGitStatus, pickMarker, markerClass } from "@/lib/git-status-context";
 import { useTerminal } from "@/lib/terminal-context";
@@ -39,6 +40,8 @@ type CreateKind = "file" | "dir";
 
 export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
   const router = useRouter();
+  const { has: hasModule } = useModules();
+  const devModule = hasModule("dev");
   const { state: syncState } = useSync();
   const syncEnabled = syncState.prefs.enabled && syncState.status !== "disabled";
 
@@ -313,7 +316,8 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
 
   return (
     <div className="flex-shrink-0 border-b border-sidebar-border">
-      {/* New / Import — one row, New project emphasized */}
+      {/* New / Import — one row, New project emphasized (Dev module only) */}
+      {devModule && (
       <div className="px-3 pt-3 pb-2 flex items-stretch gap-1.5">
         <button
           onClick={onNewProject}
@@ -340,6 +344,7 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
           <span>Import</span>
         </button>
       </div>
+      )}
 
       <div className="px-4 py-2 flex items-center justify-between">
         <span className="text-[10px] font-semibold text-muted/60 uppercase tracking-wider">
@@ -806,6 +811,8 @@ function TreeNode({
   isRoot,
   refreshKey,
 }: TreeNodeProps) {
+  const { has: hasModule } = useModules();
+  const devModule = hasModule("dev");
   const isOpen = expanded.has(path);
   const isSelected = selectedPath === path;
   const isRenaming = renamingPath === path;
@@ -963,7 +970,7 @@ function TreeNode({
             {name}
           </span>
         </button>
-        {isRepoTop && (
+        {isRepoTop && devModule && (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -978,7 +985,9 @@ function TreeNode({
       </div>
       {isOpen && children && (
         <div>
-          {children.map((entry) => (
+          {children
+            .filter((entry) => devModule || !(isRoot && entry.isDirectory && entry.name === "Projects"))
+            .map((entry) => (
             <TreeNode
               key={entry.path}
               path={entry.path}

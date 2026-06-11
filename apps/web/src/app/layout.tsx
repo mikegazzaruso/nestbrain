@@ -12,6 +12,7 @@ import { SyncProvider } from "@/lib/sync-context";
 import { GitStatusProvider } from "@/lib/git-status-context";
 import { EditorTabsProvider } from "@/lib/editor-tabs-context";
 import { OnboardingGate } from "@/lib/onboarding-gate";
+import { ModulesProvider } from "@/lib/modules-context";
 import { UpdateToast } from "@/components/update-toast";
 import "./globals.css";
 
@@ -43,6 +44,7 @@ export default function RootLayout({
     >
       <body className="h-screen overflow-hidden flex bg-background text-foreground">
         <ThemeProvider>
+         <ModulesProvider>
           <AuthProvider>
            <SyncProvider>
             <CompileProvider>
@@ -67,6 +69,7 @@ export default function RootLayout({
             </CompileProvider>
            </SyncProvider>
           </AuthProvider>
+         </ModulesProvider>
         </ThemeProvider>
       </body>
     </html>

@@ -141,6 +141,10 @@ contextBridge.exposeInMainWorld("nestbrain", {
     },
   },
 
+  modules: {
+    get: (): Promise<string[]> => ipcRenderer.invoke("nestbrain:modules:get"),
+  },
+
   // Resolve a renderer-side File object to its absolute filesystem path.
   // Used by drag-drop into the terminal — Electron 32+ removed File.path
   // so we go through webUtils, which the preload can call but the

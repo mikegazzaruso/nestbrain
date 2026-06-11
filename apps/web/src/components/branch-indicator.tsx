@@ -2,6 +2,7 @@
 
 import { ArrowDown, ArrowUp, GitBranch } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useModules } from "@/lib/modules-context";
 import { SourceControlPanel } from "./source-control-panel";
 
 interface RepoView {
@@ -30,6 +31,7 @@ interface RepoView {
  * lives outside any git repo.
  */
 export function BranchIndicator() {
+  const { has } = useModules();
   const [focusPath, setFocusPath] = useState<string | null>(null);
   const [repo, setRepo] = useState<RepoView | null>(null);
   const fetchSeq = useRef(0);
@@ -116,6 +118,7 @@ export function BranchIndicator() {
     };
   }, [focusPath]);
 
+  if (!has("dev")) return null;
   if (!repo) return null;
 
   return (

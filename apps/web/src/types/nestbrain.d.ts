@@ -125,6 +125,9 @@ declare global {
         switch: (serverUrl: string, email: string, password: string) => Promise<void>;
         onStateChanged: (callback: (state: TeamState) => void) => () => void;
       };
+      modules: {
+        get: () => Promise<string[]>;
+      };
       terminal: {
         create: (opts: { cwd: string; cols?: number; rows?: number }) => Promise<CreateTerminalResult>;
         write: (id: string, data: string) => void;
