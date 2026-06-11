@@ -38,6 +38,7 @@ fetch_artifact() {
 fetch_artifact nestbrain-update-mac
 fetch_artifact nestbrain-update-win
 fetch_artifact nestbrain-windows-x64
+fetch_artifact nestbrain-macos-arm64
 
 mkdir -p "$TMP/feed/mac" "$TMP/feed/win"
 find "$TMP/nestbrain-update-mac" -type f -exec cp {} "$TMP/feed/mac/" \;
@@ -50,6 +51,15 @@ ls -lh "$TMP/feed/mac" "$TMP/feed/win" | sed 's/^/   /'
 echo "▶ Uploading to forge…"
 rsync -az --delete "$TMP/feed/mac/" mike@forge.gazzaruso.com:/var/www/updates.nestbrain.app/mac/
 rsync -az --delete "$TMP/feed/win/" mike@forge.gazzaruso.com:/var/www/updates.nestbrain.app/win/
+
+# Enterprise app distribution: the licensing service serves these installers to
+# licensed orgs (GET /download/app/:platform); apps.txt = mac dmg, win exe.
+echo "▶ Seeding installers for Enterprise distribution…"
+DMG="$(find "$TMP/nestbrain-macos-arm64" -name '*.dmg' | head -1)"
+EXE="$(find "$TMP/nestbrain-windows-x64" -name '*.exe' | head -1)"
+BUNDLES=/home/mike/docker/nestbrain-licensing/bundles
+rsync -az "$DMG" "$EXE" "mike@forge.gazzaruso.com:$BUNDLES/"
+ssh mike@forge.gazzaruso.com "printf '%s\n%s\n' \"$(basename "$DMG")\" \"$(basename "$EXE")\" > $BUNDLES/apps.txt && cat $BUNDLES/apps.txt"
 
 echo "✅ Update feed published."
 ssh mike@forge.gazzaruso.com 'grep -m1 version /var/www/updates.nestbrain.app/mac/latest-mac.yml /var/www/updates.nestbrain.app/win/latest.yml'
