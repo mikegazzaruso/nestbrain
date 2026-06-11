@@ -98,13 +98,15 @@ export function initUpdater(
     let via: UpdateState["via"] = "build";
     try {
       const creds = await getCredentials();
-      if (creds.license) {
-        headers["x-license"] = creds.license;
-        via = "enterprise";
-      }
       if (creds.entitlement) {
         headers["x-entitlement"] = creds.entitlement;
         via = "account";
+      }
+      // A connected Team Server wins the label: that's the identity the user
+      // actually operates under (both proofs are still sent).
+      if (creds.license) {
+        headers["x-license"] = creds.license;
+        via = "enterprise";
       }
     } catch {
       /* fall back to the build key alone */

@@ -47,7 +47,7 @@ export function UpdatesSection() {
             <>
               <CheckCircle2 size={13} className="text-green-500/70" /> You&apos;re on {state.current} — up to date
               {state.via === "account" && <span className="text-muted/40">· via your account</span>}
-              {state.via === "enterprise" && <span className="text-muted/40">· via Enterprise license</span>}
+              {state.via === "enterprise" && <span className="text-muted/40">· via your Team Server</span>}
             </>
           )}
         </div>
