@@ -401,6 +401,41 @@ jobs:
           print("\nAll files uploaded and attached successfully.")
           PYEOF
 
+  publish-feed:
+    name: Publish auto-update feed
+    # The feed (updates.nestbrain.app) + Enterprise installer seed used to be
+    # published from a dev machine (scripts/publish-updates.sh, kept as the
+    # manual fallback). In CI it can't die with a laptop session. The SSH key
+    # is locked to a forced command on forge (~/bin/nb-publish-feed) that only
+    # unpacks the feed tarball into place — no shell.
+    needs: [build-mac, build-win]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Assemble feed layout
+        run: |
+          mkdir -p out/mac out/win out/enterprise
+          cp dist/*.zip dist/*.blockmap dist/latest-mac.yml out/mac/
+          cp dist/latest.yml out/win/
+          cp dist/*.exe out/win/
+          cp dist/*.dmg out/enterprise/
+          cp dist/*.exe out/enterprise/
+          ls -R out
+
+      - name: Push feed to forge
+        env:
+          FEED_DEPLOY_KEY: ${{ secrets.FEED_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$FEED_DEPLOY_KEY" > ~/.ssh/feed_key
+          chmod 600 ~/.ssh/feed_key
+          tar -C out -cz . | ssh -i ~/.ssh/feed_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new mike@forge.gazzaruso.com publish
+
   release:
     name: Publish to private releases repo
     needs: [build-mac, build-win]
