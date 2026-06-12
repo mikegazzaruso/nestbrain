@@ -13,6 +13,7 @@ import {
   BarChart3,
   Library,
 } from "lucide-react";
+import { useT } from "@/lib/app-i18n";
 
 interface Stats {
   sources: number;
@@ -33,6 +34,8 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 export default function Home() {
+  const { t } = useT();
+  const h = t.wiki.home;
   const [stats, setStats] = useState<Stats | null>(null);
 
   useEffect(() => {
@@ -52,7 +55,7 @@ export default function Home() {
           <h1 className="text-3xl font-bold tracking-tight mb-2">
             <span className="text-accent">Nest</span>Brain
           </h1>
-          <p className="text-muted text-sm">Your LLM-powered knowledge base</p>
+          <p className="text-muted text-sm">{h.tagline}</p>
         </div>
 
         {/* Stats cards */}
@@ -62,12 +65,12 @@ export default function Home() {
               // Articles = the actual knowledge you hold (incl. anything pulled
               // from a team workspace). Sources counts locally-ingested raw docs,
               // which is legitimately 0 on a device that only receives team sync.
-              { label: "Articles", value: stats.sources + stats.concepts + stats.outputs, icon: Library },
-              { label: "Sources", value: stats.rawFiles, icon: Download },
-              { label: "Summaries", value: stats.sources, icon: FileText },
-              { label: "Concepts", value: stats.concepts, icon: Brain },
-              { label: "Outputs", value: stats.outputs, icon: BarChart3 },
-              { label: "Words", value: stats.totalWords.toLocaleString(), icon: BookOpen },
+              { label: h.stats.articles, value: stats.sources + stats.concepts + stats.outputs, icon: Library },
+              { label: h.stats.sources, value: stats.rawFiles, icon: Download },
+              { label: h.stats.summaries, value: stats.sources, icon: FileText },
+              { label: h.stats.concepts, value: stats.concepts, icon: Brain },
+              { label: h.stats.outputs, value: stats.outputs, icon: BarChart3 },
+              { label: h.stats.words, value: stats.totalWords.toLocaleString(), icon: BookOpen },
             ].map((s) => {
               const Icon = s.icon;
               return (
@@ -86,12 +89,12 @@ export default function Home() {
         {/* Quick actions */}
         <div className="grid grid-cols-2 gap-3 mb-10">
           {[
-            { href: "/ingest", icon: Download, title: "Ingest", desc: "Add sources — URLs, PDFs, GitHub, arXiv, YouTube, RSS" },
-            { href: "/wiki", icon: BookOpen, title: "Browse Wiki", desc: "Explore your compiled knowledge base" },
-            { href: "/search", icon: Search, title: "Search", desc: "Semantic search across all articles" },
-            { href: "/ask", icon: MessageCircle, title: "Ask", desc: "Query your knowledge with natural language" },
-            { href: "/mindmap", icon: Network, title: "Mind Map", desc: "Visualize concept connections" },
-            { href: "/health", icon: BarChart3, title: "Health Check", desc: "Audit wiki quality and find gaps" },
+            { href: "/ingest", icon: Download, title: h.actions.ingestTitle, desc: h.actions.ingestDesc },
+            { href: "/wiki", icon: BookOpen, title: h.actions.wikiTitle, desc: h.actions.wikiDesc },
+            { href: "/search", icon: Search, title: h.actions.searchTitle, desc: h.actions.searchDesc },
+            { href: "/ask", icon: MessageCircle, title: h.actions.askTitle, desc: h.actions.askDesc },
+            { href: "/mindmap", icon: Network, title: h.actions.mindmapTitle, desc: h.actions.mindmapDesc },
+            { href: "/health", icon: BarChart3, title: h.actions.healthTitle, desc: h.actions.healthDesc },
           ].map((item) => {
             const Icon = item.icon;
             return (
@@ -112,7 +115,7 @@ export default function Home() {
         {stats && stats.recentArticles.length > 0 && (
           <div>
             <h2 className="text-sm font-medium text-muted/70 uppercase tracking-wider mb-4">
-              Recent Articles
+              {h.recentArticles}
             </h2>
             <div className="space-y-1">
               {stats.recentArticles.map((article) => (
@@ -138,17 +141,17 @@ export default function Home() {
           <div className="text-center py-16">
             <div className="text-6xl mb-4">🧠</div>
             <h2 className="text-xl font-semibold tracking-tight mb-2">
-              Your Knowledge, <span className="text-accent">Connected</span>
+              {h.emptyTitleA}<span className="text-accent">{h.emptyTitleB}</span>
             </h2>
             <p className="text-muted text-sm mb-6">
-              Start by ingesting some sources, then compile your wiki.
+              {h.emptyDesc}
             </p>
             <Link
               href="/ingest"
               className="inline-flex items-center gap-2 px-5 py-2.5 bg-accent text-background text-sm font-medium rounded-lg hover:bg-accent-hover transition-colors"
             >
               <Download size={16} />
-              Get Started
+              {h.getStarted}
             </Link>
           </div>
         )}

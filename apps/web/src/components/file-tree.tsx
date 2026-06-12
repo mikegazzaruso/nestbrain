@@ -20,6 +20,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useSync } from "@/lib/sync-context";
+import { useT } from "@/lib/app-i18n";
 import { useModules } from "@/lib/modules-context";
 import { useTeamConnected } from "@/lib/use-team-connected";
 import { FileIcon } from "./file-icon";
@@ -41,6 +42,7 @@ type CreateKind = "file" | "dir";
 
 export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
   const router = useRouter();
+  const { t } = useT();
   const { has: hasModule } = useModules();
   const devModule = hasModule("dev");
   const { state: syncState } = useSync();
@@ -111,7 +113,7 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
         refresh();
       }
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : "Import failed");
+      window.alert(e instanceof Error ? e.message : t.tree.projects.importFailed);
     }
   }, [refresh, rootPath]);
 
@@ -131,9 +133,9 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
     if (!window.nestbrain?.projects) return;
     try {
       await window.nestbrain.projects.makeReady(targetPath);
-      window.alert("Project is now knowledge-ready — commits will feed the knowledge base.");
+      window.alert(t.tree.projects.makeReadyDone);
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : "Failed to make knowledge-ready");
+      window.alert(e instanceof Error ? e.message : t.tree.projects.makeReadyFailed);
     }
   }
 
@@ -195,14 +197,14 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
       // Clear stale selection (path changed under us)
       if (selectedPath === oldPath) setSelectedPath(null);
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Rename failed");
+      window.alert(err instanceof Error ? err.message : t.tree.files.renameFailed);
       setRenamingPath(null);
     }
   }
 
   async function handleDelete(targetPath: string, name: string, isDir: boolean) {
     if (!window.nestbrain) return;
-    const kind = isDir ? "folder" : "file";
+    const kind = isDir ? t.tree.files.folderWord : t.tree.files.fileWord;
     const relPath = toRelPath(targetPath);
 
     // Sync ON + single file → soft-delete via the sync engine. The file is
@@ -213,26 +215,26 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
         await window.nestbrain.sync.softDelete(relPath);
         if (selectedPath === targetPath) setSelectedPath(null);
       } catch (err) {
-        window.alert(err instanceof Error ? err.message : "Move-to-trash failed");
+        window.alert(err instanceof Error ? err.message : t.tree.files.moveToTrashFailed);
       }
       return;
     }
 
     // Otherwise (sync off, or folder, or already in .trash/) → plain delete.
     const extraMsg = relPath.startsWith(".trash/")
-      ? "\nThis item is in .trash/ — deleting will remove it permanently from this device."
+      ? `\n${t.tree.files.deleteTrashNote}`
       : isDir
-        ? "\nAll its contents will be permanently removed."
+        ? `\n${t.tree.files.deleteFolderNote}`
         : "";
     const ok = window.confirm(
-      `Delete ${kind} "${name}"?${extraMsg}\n\nThis action cannot be undone.`,
+      `${t.tree.files.deleteConfirm(kind, name)}${extraMsg}\n\n${t.tree.files.cannotUndo}`,
     );
     if (!ok) return;
     try {
       await window.nestbrain.fs.delete(targetPath);
       if (selectedPath === targetPath) setSelectedPath(null);
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Delete failed");
+      window.alert(err instanceof Error ? err.message : t.tree.files.deleteFailed);
     }
   }
 
@@ -242,7 +244,7 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
   function handleHardDelete(targetPath: string, name: string, isDir: boolean) {
     if (!window.nestbrain) return;
     if (isDir) {
-      window.alert("Folder hard-delete isn't supported yet — delete files individually.");
+      window.alert(t.tree.files.hardDeleteFolderUnsupported);
       return;
     }
     setHardDeleteTarget({ absPath: targetPath, name });
@@ -256,7 +258,7 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
       await window.nestbrain.sync.hardDelete(relPath);
       if (selectedPath === absPath) setSelectedPath(null);
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Hard delete failed");
+      window.alert(err instanceof Error ? err.message : t.tree.files.hardDeleteFailed);
     } finally {
       setHardDeleteTarget(null);
     }
@@ -286,7 +288,7 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
       return;
     }
     if (trimmed.includes("/") || trimmed === "." || trimmed === "..") {
-      setCreateError("Invalid name");
+      setCreateError(t.tree.files.invalidName);
       return;
     }
     const fullPath = `${creating.parent}/${trimmed}`;
@@ -304,7 +306,7 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
       }
     } catch (err) {
       setCreateError(
-        err instanceof Error ? err.message : "Failed to create",
+        err instanceof Error ? err.message : t.tree.files.createFailed,
       );
     }
   }
@@ -322,14 +324,14 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
       <div className="px-3 pt-3 pb-2 flex items-stretch gap-1.5">
         <button
           onClick={onNewProject}
-          title="Create a new project in NestBrain/Projects"
+          title={t.tree.projects.newProjectTitle}
           className="group flex-1 min-w-0 flex items-center justify-between gap-2 px-3 py-2 rounded-md text-[12px] font-medium text-foreground/90 bg-card hover:bg-card-hover border border-border hover:border-accent/40 transition-colors"
         >
           <span className="flex items-center gap-2 min-w-0">
             <span className="flex items-center justify-center w-5 h-5 rounded-md bg-accent/15 text-accent group-hover:bg-accent/20 transition-colors">
               <Plus size={12} strokeWidth={2.5} />
             </span>
-            <span className="truncate">New project</span>
+            <span className="truncate">{t.tree.projects.newProject}</span>
           </span>
           <ArrowRight
             size={12}
@@ -338,11 +340,11 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
         </button>
         <button
           onClick={importProject}
-          title="Import an existing folder into Projects — made knowledge-ready automatically"
+          title={t.tree.projects.importTitle}
           className="shrink-0 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] text-muted/70 hover:text-foreground bg-card/50 hover:bg-card border border-border/60 hover:border-border transition-colors"
         >
           <FolderInput size={12} className="shrink-0 text-muted/50" />
-          <span>Import</span>
+          <span>{t.tree.projects.import}</span>
         </button>
       </div>
       )}
@@ -355,14 +357,14 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
           <button
             onClick={() => startCreate("file")}
             className="p-1 text-muted/40 hover:text-foreground hover:bg-card rounded transition-colors"
-            title="New file in selected folder"
+            title={t.tree.files.newFileTitle}
           >
             <FilePlus size={12} />
           </button>
           <button
             onClick={() => startCreate("dir")}
             className="p-1 text-muted/40 hover:text-foreground hover:bg-card rounded transition-colors"
-            title="New folder in selected folder"
+            title={t.tree.files.newFolderTitle}
           >
             <FolderPlus size={12} />
           </button>
@@ -464,6 +466,7 @@ function HardDeleteDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const { t } = useT();
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
   const ready = typed === "DELETE";
@@ -490,24 +493,22 @@ function HardDeleteDialog({
           <div className="flex items-center gap-2 mb-2">
             <Trash2 size={16} className="text-red-400" />
             <h2 className="text-base font-semibold text-red-400">
-              Delete on all devices?
+              {t.tree.files.hardDeleteTitle}
             </h2>
           </div>
           <p className="text-[12px] text-muted/80 leading-relaxed">
-            <span className="font-mono text-foreground">{name}</span> will be
-            permanently removed from your Google Drive. Other devices signed in
-            to NestBrain with this account will move their local copy to{" "}
+            <span className="font-mono text-foreground">{name}</span>{" "}
+            {t.tree.files.hardDeleteBody1}{" "}
             <code className="text-accent/80 bg-accent/5 px-1 rounded">
               .trash/
             </code>{" "}
-            on their next sync — but the file will no longer be recoverable from
-            Drive. This cannot be undone.
+            {t.tree.files.hardDeleteBody2}
           </p>
         </div>
 
         <div className="space-y-1.5">
           <label className="block text-[10px] text-muted/60 uppercase tracking-wider">
-            Type DELETE to confirm
+            {t.tree.files.typeDeleteToConfirm}
           </label>
           <input
             autoFocus
@@ -529,14 +530,14 @@ function HardDeleteDialog({
             disabled={busy}
             className="px-4 py-2 rounded-lg text-xs text-muted hover:text-foreground transition-colors disabled:opacity-50"
           >
-            Cancel
+            {t.tree.files.cancel}
           </button>
           <button
             onClick={doConfirm}
             disabled={!ready || busy}
             className="px-4 py-2 rounded-lg text-xs font-medium bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
           >
-            {busy ? "Deleting…" : "Delete forever"}
+            {busy ? t.tree.files.deleting : t.tree.files.deleteForever}
           </button>
         </div>
       </div>
@@ -566,6 +567,7 @@ function ContextMenu({
   onMakeReady,
   syncEnabled,
 }: ContextMenuProps) {
+  const { t } = useT();
   // Clamp within viewport so it doesn't clip on the right/bottom
   const MENU_W = 220;
   const MENU_H = onHardDelete ? 170 : 120;
@@ -582,7 +584,7 @@ function ContextMenu({
         <>
           <MenuItem
             icon={<ExternalLink size={12} />}
-            label="Open"
+            label={t.tree.files.open}
             onClick={onOpen}
           />
           <div className="my-1 h-px bg-border/60" />
@@ -592,7 +594,7 @@ function ContextMenu({
         <>
           <MenuItem
             icon={<Sparkles size={12} />}
-            label="Make knowledge-ready"
+            label={t.tree.projects.makeReady}
             onClick={onMakeReady}
           />
           <div className="my-1 h-px bg-border/60" />
@@ -600,19 +602,19 @@ function ContextMenu({
       )}
       <MenuItem
         icon={<Pencil size={12} />}
-        label="Rename"
+        label={t.tree.files.rename}
         onClick={onRename}
       />
       <MenuItem
         icon={<Trash2 size={12} />}
-        label={syncEnabled ? "Move to .trash/" : "Delete"}
+        label={syncEnabled ? t.tree.files.moveToTrash : t.tree.files.delete}
         onClick={onDelete}
         danger
       />
       {onHardDelete && (
         <MenuItem
           icon={<Cloud size={12} />}
-          label="Delete on all devices…"
+          label={t.tree.files.deleteAllDevices}
           onClick={onHardDelete}
           danger
         />
@@ -728,6 +730,7 @@ function CreateInput({
   onConfirm,
   onCancel,
 }: CreateInputProps) {
+  const { t } = useT();
   const [value, setValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -738,7 +741,7 @@ function CreateInput({
   return (
     <div className="px-3 py-2 border-t border-b border-border/50 bg-card/40">
       <div className="text-[10px] text-muted/50 mb-1 truncate">
-        New {kind === "file" ? "file" : "folder"} in{" "}
+        {kind === "file" ? t.tree.files.newFileIn : t.tree.files.newFolderIn}{" "}
         <span className="text-muted/80 font-mono">{parentLabel}</span>
       </div>
       <div className="flex items-center gap-1.5">
@@ -761,7 +764,7 @@ function CreateInput({
           onBlur={() => {
             if (!value.trim()) onCancel();
           }}
-          placeholder={kind === "file" ? "filename.md" : "folder-name"}
+          placeholder={kind === "file" ? t.tree.files.filePlaceholder : t.tree.files.folderPlaceholder}
           className="flex-1 min-w-0 px-1.5 py-0.5 bg-background border border-accent/40 rounded text-[12px] text-foreground placeholder:text-muted/30 focus:outline-none focus:border-accent/70"
         />
       </div>
@@ -812,6 +815,7 @@ function TreeNode({
   isRoot,
   refreshKey,
 }: TreeNodeProps) {
+  const { t } = useT();
   const { has: hasModule } = useModules();
   const devModule = hasModule("dev");
   const teamConnected = useTeamConnected();
@@ -924,7 +928,7 @@ function TreeNode({
             : "text-muted/60 hover:text-foreground hover:bg-card"
         }`}
         style={{ paddingLeft: `${indent + 8}px` }}
-        title="Double-click to open · Right-click for options"
+        title={t.tree.files.fileRowTitle}
       >
         <div className="w-[11px] shrink-0" />
         <FileIcon name={name} size={14} />
@@ -981,7 +985,7 @@ function TreeNode({
               void openTerminal(path, name);
             }}
             className="shrink-0 p-0.5 text-accent/40 hover:text-accent transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
-            title={`Open terminal here · focus branch indicator on ${name}`}
+            title={t.tree.projects.openTerminalTitle(name)}
           >
             <GitBranch size={12} />
           </button>
@@ -1019,7 +1023,7 @@ function TreeNode({
               className="text-[11px] text-muted/30 italic py-0.5"
               style={{ paddingLeft: `${(depth + 1) * 10 + 28}px` }}
             >
-              empty
+              {t.tree.files.empty}
             </div>
           )}
         </div>

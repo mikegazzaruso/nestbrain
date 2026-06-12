@@ -20,6 +20,8 @@ import { SyncAccountSection } from "@/components/sync-account-section";
 import { CliInstallSection } from "@/components/cli-install-section";
 import { TeamSection } from "@/components/team-section";
 import { UpdatesSection } from "@/components/updates-section";
+import { LanguageSection } from "@/components/language-section";
+import { useT } from "@/lib/app-i18n";
 
 interface OpenAIModel {
   id: string;
@@ -34,6 +36,7 @@ interface OllamaModel {
 type Provider = "claude-cli" | "openai" | "ollama";
 
 export default function SettingsPage() {
+  const { t } = useT();
   const [provider, setProvider] = useState<Provider>("claude-cli");
   const [claudeModel, setClaudeModel] = useState("sonnet");
   const [openaiApiKey, setOpenaiApiKey] = useState("");
@@ -97,7 +100,7 @@ export default function SettingsPage() {
       if (!data.running) {
         setOllamaStatus("down");
         setOllamaModels([]);
-        setOllamaError(data.error ?? "Ollama server is not running.");
+        setOllamaError(data.error ?? t.settings.ollama.notRunning);
         setShowOllamaError(true);
         return;
       }
@@ -109,7 +112,7 @@ export default function SettingsPage() {
     } catch {
       setOllamaStatus("down");
       setOllamaModels([]);
-      setOllamaError("Failed to reach the Ollama server.");
+      setOllamaError(t.settings.ollama.failedReach);
       setShowOllamaError(true);
     }
   }
@@ -128,7 +131,7 @@ export default function SettingsPage() {
         setModels(data.models ?? []);
       }
     } catch {
-      setModelsError("Failed to load models");
+      setModelsError(t.settings.llm.failedLoadModels);
       setModels([]);
     }
     setModelsLoading(false);
@@ -178,8 +181,10 @@ export default function SettingsPage() {
       <div className="max-w-xl mx-auto">
         <div className="flex items-center gap-3 mb-8">
           <SettingsIcon size={20} className="text-muted" />
-          <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{t.settings.title}</h1>
         </div>
+
+        <LanguageSection />
 
         <SyncAccountSection />
 
@@ -190,7 +195,7 @@ export default function SettingsPage() {
         {/* LLM Provider */}
         <section className="mb-10">
           <h2 className="text-sm font-medium text-muted/70 uppercase tracking-wider mb-4">
-            LLM Provider
+            {t.settings.llm.title}
           </h2>
 
           <div className="grid grid-cols-3 gap-3 mb-6">
@@ -210,7 +215,7 @@ export default function SettingsPage() {
                 )}
               </div>
               <p className="text-[11px] text-muted/60 leading-relaxed">
-                Uses your Claude Max subscription via CLI. No API key needed.
+                {t.settings.llm.claudeDesc}
               </p>
             </button>
 
@@ -230,7 +235,7 @@ export default function SettingsPage() {
                 )}
               </div>
               <p className="text-[11px] text-muted/60 leading-relaxed">
-                Uses OpenAI API. Requires an API key.
+                {t.settings.llm.openaiDesc}
               </p>
             </button>
 
@@ -248,7 +253,7 @@ export default function SettingsPage() {
                 {provider === "ollama" && <Check size={14} className="text-accent" />}
               </div>
               <p className="text-[11px] text-muted/60 leading-relaxed">
-                Local models on your machine. Private, no API key.
+                {t.settings.llm.ollamaDesc}
               </p>
             </button>
           </div>
@@ -257,7 +262,7 @@ export default function SettingsPage() {
           {provider === "claude-cli" && (
             <div className="space-y-4 p-5 rounded-xl bg-card border border-border">
               <div>
-                <label className="block text-xs text-muted/70 mb-2">Model</label>
+                <label className="block text-xs text-muted/70 mb-2">{t.settings.llm.model}</label>
                 <select
                   value={claudeModel}
                   onChange={(e) => setClaudeModel(e.target.value)}
@@ -269,9 +274,9 @@ export default function SettingsPage() {
                 </select>
               </div>
               <p className="text-[11px] text-muted/40 leading-relaxed">
-                Authenticated via your Claude CLI session. Run{" "}
+                {t.settings.llm.claudeAuthBefore}{" "}
                 <code className="text-accent/60 bg-accent/5 px-1 rounded">claude auth login</code>{" "}
-                in terminal if needed.
+                {t.settings.llm.claudeAuthAfter}
               </p>
             </div>
           )}
@@ -281,7 +286,7 @@ export default function SettingsPage() {
             <div className="space-y-4 p-5 rounded-xl bg-card border border-border">
               {/* API Key */}
               <div>
-                <label className="block text-xs text-muted/70 mb-2">API Key</label>
+                <label className="block text-xs text-muted/70 mb-2">{t.settings.llm.apiKey}</label>
                 <div className="flex gap-2">
                   <div className="relative flex-1">
                     <input
@@ -303,18 +308,18 @@ export default function SettingsPage() {
                     disabled={!openaiApiKey || openaiApiKey.startsWith("sk-...")}
                     className="px-3 py-2.5 bg-background border border-border rounded-lg text-xs text-muted hover:text-foreground hover:border-accent/30 transition-colors disabled:opacity-30"
                   >
-                    Test
+                    {t.settings.llm.test}
                   </button>
                 </div>
               </div>
 
               {/* Model selector */}
               <div>
-                <label className="block text-xs text-muted/70 mb-2">Model</label>
+                <label className="block text-xs text-muted/70 mb-2">{t.settings.llm.model}</label>
                 {modelsLoading ? (
                   <div className="flex items-center gap-2 px-3 py-2.5 text-xs text-muted">
                     <Loader2 size={12} className="animate-spin" />
-                    Loading models...
+                    {t.settings.llm.loadingModels}
                   </div>
                 ) : modelsError ? (
                   <div className="flex items-center gap-2 px-3 py-2.5 text-xs text-red-400">
@@ -347,7 +352,7 @@ export default function SettingsPage() {
                 )}
                 {models.length > 0 && (
                   <p className="text-[10px] text-muted/30 mt-1.5">
-                    {models.length} models available
+                    {t.settings.llm.modelsAvailable(models.length)}
                   </p>
                 )}
               </div>
@@ -363,19 +368,19 @@ export default function SettingsPage() {
                   {ollamaStatus === "checking" ? (
                     <>
                       <Loader2 size={13} className="animate-spin text-muted" />
-                      <span className="text-muted">Checking Ollama server…</span>
+                      <span className="text-muted">{t.settings.ollama.checking}</span>
                     </>
                   ) : ollamaStatus === "up" ? (
                     <>
                       <span className="w-2 h-2 rounded-full bg-green-400" />
                       <span className="text-green-400/90">
-                        Ollama is running · {ollamaModels.length} model{ollamaModels.length === 1 ? "" : "s"}
+                        {t.settings.ollama.running(ollamaModels.length)}
                       </span>
                     </>
                   ) : ollamaStatus === "down" ? (
                     <>
                       <AlertCircle size={13} className="text-red-400" />
-                      <span className="text-red-400">Ollama server not reachable</span>
+                      <span className="text-red-400">{t.settings.ollama.notReachable}</span>
                     </>
                   ) : (
                     <span className="text-muted/60">Ollama</span>
@@ -387,13 +392,13 @@ export default function SettingsPage() {
                   className="flex items-center gap-1.5 px-2.5 py-1.5 bg-background border border-border rounded-lg text-[11px] text-muted hover:text-foreground hover:border-accent/30 transition-colors disabled:opacity-40"
                 >
                   <RefreshCw size={11} className={ollamaStatus === "checking" ? "animate-spin" : ""} />
-                  Check again
+                  {t.settings.ollama.checkAgain}
                 </button>
               </div>
 
               {/* Model selector — enabled only when the server is up */}
               <div>
-                <label className="block text-xs text-muted/70 mb-2">Model</label>
+                <label className="block text-xs text-muted/70 mb-2">{t.settings.llm.model}</label>
                 {ollamaStatus === "up" && ollamaModels.length > 0 ? (
                   <select
                     value={ollamaModel}
@@ -408,19 +413,21 @@ export default function SettingsPage() {
                   </select>
                 ) : ollamaStatus === "up" && ollamaModels.length === 0 ? (
                   <p className="text-[11px] text-muted/60 leading-relaxed px-3 py-2.5 bg-background border border-border rounded-lg">
-                    No models installed. Pull one from your terminal, e.g.{" "}
-                    <code className="text-accent/70 bg-accent/5 px-1 rounded">ollama pull llama3</code>, then “Check again”.
+                    {t.settings.ollama.noModelsBefore}{" "}
+                    <code className="text-accent/70 bg-accent/5 px-1 rounded">ollama pull llama3</code>
+                    {t.settings.ollama.noModelsAfter}
                   </p>
                 ) : (
                   <div className="flex items-center gap-2 px-3 py-2.5 bg-background border border-border rounded-lg text-xs text-muted/50">
-                    {ollamaStatus === "checking" ? "Detecting models…" : "Start the Ollama server to pick a model."}
+                    {ollamaStatus === "checking" ? t.settings.ollama.detecting : t.settings.ollama.startServer}
                   </div>
                 )}
               </div>
 
               <p className="text-[11px] text-muted/40 leading-relaxed">
-                Runs models locally via{" "}
-                <code className="text-accent/60 bg-accent/5 px-1 rounded">ollama serve</code>. Nothing leaves your machine.
+                {t.settings.ollama.localNoteBefore}{" "}
+                <code className="text-accent/60 bg-accent/5 px-1 rounded">ollama serve</code>
+                {t.settings.ollama.localNoteAfter}
               </p>
             </div>
           )}
@@ -429,14 +436,14 @@ export default function SettingsPage() {
         {/* Auto-Compile */}
         <section className="mb-10">
           <h2 className="text-sm font-medium text-muted/70 uppercase tracking-wider mb-4">
-            Compilation
+            {t.settings.compile.title}
           </h2>
           <div className="p-5 rounded-xl bg-card border border-border">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium">Auto-compile after ingest</p>
+                <p className="text-sm font-medium">{t.settings.compile.autoTitle}</p>
                 <p className="text-[11px] text-muted/60 leading-relaxed mt-1">
-                  Automatically compile the knowledge base after adding new sources.
+                  {t.settings.compile.autoDesc}
                 </p>
               </div>
               <button
@@ -470,11 +477,11 @@ export default function SettingsPage() {
             ) : saved ? (
               <Check size={14} />
             ) : null}
-            {saved ? "Saved" : "Save Settings"}
+            {saved ? t.settings.save.saved : t.settings.save.button}
           </button>
           {saved && (
             <span className="text-xs text-green-400/70">
-              Settings saved successfully
+              {t.settings.save.success}
             </span>
           )}
         </div>
@@ -488,7 +495,7 @@ export default function SettingsPage() {
 
       {showOllamaError && (
         <OllamaErrorModal
-          message={ollamaError ?? "Ollama server is not running."}
+          message={ollamaError ?? t.settings.ollama.notRunning}
           onClose={() => setShowOllamaError(false)}
           onRetry={() => {
             setShowOllamaError(false);
@@ -509,6 +516,7 @@ function OllamaErrorModal({
   onClose: () => void;
   onRetry: () => void;
 }) {
+  const { t } = useT();
   if (typeof document === "undefined") return null;
   return createPortal(
     <div
@@ -525,7 +533,7 @@ function OllamaErrorModal({
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center shadow-lg shadow-red-500/20">
               <AlertTriangle size={18} className="text-white" />
             </div>
-            <h3 className="text-base font-semibold">Ollama not running</h3>
+            <h3 className="text-base font-semibold">{t.settings.ollama.modalTitle}</h3>
           </div>
           <button onClick={onClose} className="text-muted/40 hover:text-muted transition-colors">
             <X size={16} />
@@ -534,17 +542,17 @@ function OllamaErrorModal({
 
         <p className="text-sm text-muted/80 leading-relaxed mb-3">{message}</p>
         <div className="text-[12px] text-muted/60 leading-relaxed bg-background border border-border rounded-lg p-3 mb-5">
-          <p className="mb-1">Get Ollama running, then retry:</p>
+          <p className="mb-1">{t.settings.ollama.modalSteps}</p>
           <ol className="list-decimal list-inside space-y-0.5">
             <li>
-              Install from{" "}
+              {t.settings.ollama.stepInstall}{" "}
               <span className="text-accent/70">ollama.com</span>
             </li>
             <li>
-              Start it: <code className="text-accent/70 bg-accent/5 px-1 rounded">ollama serve</code>
+              {t.settings.ollama.stepStart} <code className="text-accent/70 bg-accent/5 px-1 rounded">ollama serve</code>
             </li>
             <li>
-              Pull a model: <code className="text-accent/70 bg-accent/5 px-1 rounded">ollama pull llama3</code>
+              {t.settings.ollama.stepPull} <code className="text-accent/70 bg-accent/5 px-1 rounded">ollama pull llama3</code>
             </li>
           </ol>
         </div>
@@ -554,14 +562,14 @@ function OllamaErrorModal({
             onClick={onClose}
             className="px-4 py-2 text-sm text-muted hover:text-foreground border border-border rounded-lg hover:bg-card-hover transition-colors"
           >
-            Dismiss
+            {t.settings.ollama.dismiss}
           </button>
           <button
             onClick={onRetry}
             className="px-5 py-2 bg-accent text-background text-sm font-medium rounded-lg hover:bg-accent-hover transition-colors flex items-center gap-2"
           >
             <RefreshCw size={14} />
-            Retry
+            {t.settings.ollama.retry}
           </button>
         </div>
       </div>
@@ -571,6 +579,7 @@ function OllamaErrorModal({
 }
 
 function NestBrainLocation() {
+  const { t } = useT();
   const [currentPath, setCurrentPath] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -611,14 +620,14 @@ function NestBrainLocation() {
       setCurrentPath(result.nestBrainPath);
       setNotice(
         result.moved
-          ? "NestBrain moved successfully."
+          ? t.settings.location.moved
           : result.created
-            ? "New NestBrain created at the chosen location."
-            : "NestBrain location unchanged.",
+            ? t.settings.location.created
+            : t.settings.location.unchanged,
       );
       setConfirmParent(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to move NestBrain.");
+      setError(err instanceof Error ? err.message : t.settings.location.moveFailed);
     }
     setBusy(false);
   }
@@ -626,7 +635,7 @@ function NestBrainLocation() {
   return (
     <section className="mt-12 pt-8 border-t border-border">
       <h2 className="text-sm font-medium text-muted/70 uppercase tracking-wider mb-4">
-        NestBrain Location
+        {t.settings.location.title}
       </h2>
 
       <div className="p-5 rounded-xl bg-card border border-border">
@@ -634,19 +643,16 @@ function NestBrainLocation() {
           <FolderOpen size={16} className="text-muted/60 mt-0.5 shrink-0" />
           <div className="flex-1 min-w-0">
             <p className="text-[11px] text-muted/60 uppercase tracking-wider mb-1">
-              Current path
+              {t.settings.location.currentPath}
             </p>
             <p className="text-sm font-mono text-foreground truncate" title={currentPath ?? ""}>
-              {currentPath ?? "Not set"}
+              {currentPath ?? t.settings.location.notSet}
             </p>
           </div>
         </div>
 
         <p className="text-[11px] text-muted/60 leading-relaxed mb-4">
-          Move your NestBrain workspace to a different location on disk. If a
-          NestBrain already exists, it will be moved (preserving all your data);
-          otherwise a fresh one will be created at the chosen location. Any
-          open terminal sessions will be closed.
+          {t.settings.location.desc}
         </p>
 
         <button
@@ -655,7 +661,7 @@ function NestBrainLocation() {
           className="px-4 py-2 bg-background border border-border rounded-lg text-xs text-foreground hover:border-accent/40 hover:bg-accent/5 transition-colors disabled:opacity-50 flex items-center gap-2"
         >
           <FolderOpen size={13} />
-          Change location…
+          {t.settings.location.change}
         </button>
 
         {notice && (
@@ -674,7 +680,7 @@ function NestBrainLocation() {
         {confirmParent && (
           <div className="mt-4 p-4 rounded-lg bg-accent/5 border border-accent/20">
             <p className="text-xs text-foreground/90 mb-3 leading-relaxed">
-              {currentPath ? "Move NestBrain to this location?" : "Create NestBrain at this location?"}
+              {currentPath ? t.settings.location.confirmMove : t.settings.location.confirmCreate}
             </p>
             <div className="flex items-center gap-2 text-[11px] font-mono text-muted/70 mb-4 overflow-hidden">
               {currentPath && (
@@ -696,14 +702,14 @@ function NestBrainLocation() {
                 className="px-4 py-2 bg-accent text-background text-xs font-medium rounded-lg hover:bg-accent-hover transition-colors disabled:opacity-50 flex items-center gap-2"
               >
                 {busy && <Loader2 size={12} className="animate-spin" />}
-                {busy ? "Working…" : "Confirm"}
+                {busy ? t.settings.location.working : t.settings.location.confirm}
               </button>
               <button
                 onClick={() => setConfirmParent(null)}
                 disabled={busy}
                 className="px-4 py-2 bg-background border border-border rounded-lg text-xs text-muted hover:text-foreground transition-colors disabled:opacity-50"
               >
-                Cancel
+                {t.settings.location.cancel}
               </button>
             </div>
           </div>
@@ -714,6 +720,7 @@ function NestBrainLocation() {
 }
 
 function DangerZone() {
+  const { t } = useT();
   const [wiping, setWiping] = useState(false);
   const [wiped, setWiped] = useState(false);
   const [confirmText, setConfirmText] = useState("");
@@ -739,22 +746,22 @@ function DangerZone() {
   return (
     <section className="mt-12 pt-8 border-t border-red-500/20">
       <h2 className="text-sm font-medium text-red-400/80 uppercase tracking-wider mb-4">
-        Danger Zone
+        {t.settings.danger.title}
       </h2>
 
       <div className="p-5 rounded-xl bg-red-500/[0.03] border border-red-500/20">
-        <h3 className="text-sm font-medium text-red-400 mb-1">Wipe All Data</h3>
+        <h3 className="text-sm font-medium text-red-400 mb-1">{t.settings.danger.wipeTitle}</h3>
         <p className="text-xs text-muted/60 leading-relaxed mb-4">
-          This will permanently delete <strong className="text-red-400/80">all ingested sources</strong>,{" "}
-          <strong className="text-red-400/80">all compiled wiki articles</strong>,{" "}
-          <strong className="text-red-400/80">all Q&A outputs</strong>, and the{" "}
-          <strong className="text-red-400/80">vector search index</strong>.
-          This action cannot be undone.
+          {t.settings.danger.descIntro} <strong className="text-red-400/80">{t.settings.danger.sources}</strong>,{" "}
+          <strong className="text-red-400/80">{t.settings.danger.articles}</strong>,{" "}
+          <strong className="text-red-400/80">{t.settings.danger.qa}</strong>, {t.settings.danger.andThe}{" "}
+          <strong className="text-red-400/80">{t.settings.danger.index}</strong>.{" "}
+          {t.settings.danger.noUndo}
         </p>
 
         {wiped ? (
           <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
-            <p className="text-xs text-red-400">All data has been wiped. The knowledge base is empty.</p>
+            <p className="text-xs text-red-400">{t.settings.danger.wipedMsg}</p>
           </div>
         ) : (
           <div className="flex items-center gap-3">
@@ -762,7 +769,7 @@ function DangerZone() {
               type="text"
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value)}
-              placeholder='Type "DELETE" to confirm'
+              placeholder={t.settings.danger.placeholder}
               className="flex-1 px-3 py-2 bg-background border border-red-500/30 rounded-lg text-sm text-foreground placeholder:text-muted/30 focus:outline-none focus:border-red-500/60 focus:ring-1 focus:ring-red-500/20"
             />
             <button
@@ -771,7 +778,7 @@ function DangerZone() {
               className="px-4 py-2 bg-red-500/20 text-red-400 text-sm font-medium rounded-lg hover:bg-red-500/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
             >
               {wiping && <Loader2 size={14} className="animate-spin" />}
-              Wipe Everything
+              {t.settings.danger.wipeButton}
             </button>
           </div>
         )}

@@ -2,8 +2,10 @@
 
 import { useCompile } from "@/lib/compile-context";
 import { RefreshCw } from "lucide-react";
+import { useT } from "@/lib/app-i18n";
 
 export function CompileIndicator() {
+  const { t } = useT();
   const { status, message, phase, compile } = useCompile();
 
   return (
@@ -36,11 +38,11 @@ export function CompileIndicator() {
         <span className="flex-1 text-left text-[11px] truncate">
           {status === "idle" && (
             <span className="text-muted/50 group-hover:text-muted transition-colors">
-              Ready to compile
+              {t.tree.compile.ready}
             </span>
           )}
           {status === "compiling" && (
-            <span className="text-amber-400/90">Compiling...</span>
+            <span className="text-amber-400/90">{t.tree.compile.compiling}</span>
           )}
           {status === "success" && (
             <span className="text-green-400/80">{message}</span>

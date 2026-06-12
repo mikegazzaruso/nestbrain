@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { Brain, Github, Globe, X } from "lucide-react";
+import { useT } from "@/lib/app-i18n";
 
 // Custom About dialog — opened by the macOS "About NestBrain" menu item via
 // the nestbrain:show-about IPC. Replaces the cramped native panel.
 
 export function AboutModal() {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   const version = process.env.NEXT_PUBLIC_APP_VERSION ?? "";
 
@@ -44,7 +46,7 @@ export function AboutModal() {
             <button
               onClick={() => setOpen(false)}
               className="absolute top-3.5 right-3.5 p-1.5 rounded-lg text-muted/50 hover:text-foreground hover:bg-card transition-colors"
-              aria-label="Close"
+              aria-label={t.team.about.close}
             >
               <X size={15} />
             </button>
@@ -56,7 +58,7 @@ export function AboutModal() {
             <h2 className="text-2xl font-bold tracking-tight mb-1">
               <span className="text-accent">Nest</span>Brain
             </h2>
-            <p className="text-[13px] text-muted mb-3">Your AI-powered second brain</p>
+            <p className="text-[13px] text-muted mb-3">{t.team.about.tagline}</p>
 
             <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-[11px] font-mono text-muted mb-6">
               v{version}
@@ -81,8 +83,8 @@ export function AboutModal() {
 
             <div className="pt-4 border-t border-border/60">
               <p className="text-[11px] text-muted/60 leading-relaxed">
-                Created by Mike Gazzaruso
-                <br />© 2026 NextEpochs. All rights reserved.
+                {t.team.about.createdBy}
+                <br />{t.team.about.rights}
               </p>
             </div>
           </div>

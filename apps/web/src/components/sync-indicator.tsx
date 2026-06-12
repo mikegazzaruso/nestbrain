@@ -11,9 +11,11 @@ import {
   Loader2,
 } from "lucide-react";
 import { useSync } from "@/lib/sync-context";
+import { useT, type AppDict } from "@/lib/app-i18n";
 
 // Status-bar sync widget. Click it to open a popover with details + Sync now.
 export function SyncIndicator() {
+  const { t } = useT();
   const { state, available, syncNow } = useSync();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -49,7 +51,7 @@ export function SyncIndicator() {
       <button
         onClick={() => setOpen((v) => !v)}
         className={`flex items-center gap-1.5 px-2.5 h-full hover:bg-card transition-colors ${tone}`}
-        title={titleFor(status, lastSyncAt, error)}
+        title={titleFor(t.tree.sync, status, lastSyncAt, error)}
       >
         <Icon size={12} className={busy ? "animate-spin" : ""} />
         {busy && progress ? (
@@ -60,7 +62,7 @@ export function SyncIndicator() {
             </span>
           </>
         ) : (
-          <span>{labelFor(status, prefs.enabled)}</span>
+          <span>{labelFor(t.tree.sync, status, prefs.enabled)}</span>
         )}
       </button>
 
@@ -68,14 +70,14 @@ export function SyncIndicator() {
         <div className="absolute bottom-7 right-0 w-72 rounded-lg border border-border bg-card shadow-lg z-50 overflow-hidden">
           <div className="px-3 py-2.5 border-b border-border flex items-center gap-2">
             <Icon size={14} className={tone} />
-            <span className="text-xs font-medium">{titleFor(status, lastSyncAt, error)}</span>
+            <span className="text-xs font-medium">{titleFor(t.tree.sync, status, lastSyncAt, error)}</span>
           </div>
 
           {busy && progress && (
             <div className="px-3 py-2.5 border-b border-border">
               <div className="text-[10px] text-muted/60 mb-1.5">
-                {progress.done} of {progress.total} files
-                {progress.skipped > 0 && ` (${progress.skipped} skipped)`}
+                {t.tree.sync.filesProgress(progress.done, progress.total)}
+                {progress.skipped > 0 && t.tree.sync.skipped(progress.skipped)}
               </div>
               <div className="h-1 rounded-full bg-border overflow-hidden">
                 <div
@@ -104,14 +106,14 @@ export function SyncIndicator() {
               className="flex-1 flex items-center justify-center gap-1.5 h-8 px-3 rounded-md border border-border bg-background hover:bg-card-hover text-xs disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               {busy ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-              Sync now
+              {t.tree.sync.syncNow}
             </button>
             <Link
               href="/settings"
               onClick={() => setOpen(false)}
               className="h-8 px-3 flex items-center justify-center rounded-md text-xs text-muted/70 hover:text-foreground hover:bg-card-hover transition-colors"
             >
-              Settings
+              {t.tree.sync.settings}
             </Link>
           </div>
         </div>
@@ -120,23 +122,26 @@ export function SyncIndicator() {
   );
 }
 
-function labelFor(status: import("@nestbrain/shared").SyncStatus, enabled: boolean): string {
-  if (status === "disabled") return enabled ? "Sync paused" : "Sync off";
-  if (status === "error") return "Sync error";
-  if (status === "scanning") return "Scanning…";
-  if (status === "syncing") return "Syncing";
-  return "Sync";
+type SyncDict = AppDict["tree"]["sync"];
+
+function labelFor(d: SyncDict, status: import("@nestbrain/shared").SyncStatus, enabled: boolean): string {
+  if (status === "disabled") return enabled ? d.paused : d.off;
+  if (status === "error") return d.error;
+  if (status === "scanning") return d.scanning;
+  if (status === "syncing") return d.syncing;
+  return d.sync;
 }
 
 function titleFor(
+  d: SyncDict,
   status: import("@nestbrain/shared").SyncStatus,
   lastSyncAt: number | undefined,
   error: string | undefined,
 ): string {
-  if (status === "disabled") return "Sync is disabled";
-  if (status === "error") return error ?? "Sync error";
-  if (status === "scanning") return "Scanning workspace…";
-  if (status === "syncing") return "Sync in progress";
-  if (lastSyncAt) return `Last sync: ${new Date(lastSyncAt).toLocaleString()}`;
-  return "Sync idle";
+  if (status === "disabled") return d.disabledTitle;
+  if (status === "error") return error ?? d.error;
+  if (status === "scanning") return d.scanningWorkspace;
+  if (status === "syncing") return d.inProgress;
+  if (lastSyncAt) return d.lastSync(new Date(lastSyncAt).toLocaleString());
+  return d.idle;
 }

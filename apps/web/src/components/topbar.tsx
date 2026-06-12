@@ -5,6 +5,7 @@ import Link from "next/link";
 import { LogOut, Settings as SettingsIcon, Loader2, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { useTeamConnected } from "@/lib/use-team-connected";
+import { useT } from "@/lib/app-i18n";
 
 // Slim top bar that sits above the main content area. The whole strip is a
 // macOS window-drag region; interactive elements opt out via `-webkit-app-region: no-drag`.
@@ -20,6 +21,7 @@ export function Topbar() {
 }
 
 function AccountWidget() {
+  const { t } = useT();
   const { state, signIn, signOut, cancelSignIn } = useAuth();
   const teamConnected = useTeamConnected();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -44,11 +46,11 @@ function AccountWidget() {
     return (
       <div
         style={noDrag}
-        title="Google Drive sync is managed by your Team Server while connected"
+        title={t.tree.topbar.teamManaged}
         className="flex items-center gap-1.5 h-7 px-3 rounded-md bg-violet-500/10 border border-violet-500/30 text-xs font-medium text-violet-300 cursor-default select-none"
       >
         <ShieldCheck size={13} />
-        Team Server active
+        {t.tree.topbar.teamActive}
       </div>
     );
   }
@@ -59,11 +61,11 @@ function AccountWidget() {
       <button
         disabled
         style={noDrag}
-        title="Drive sync requires the official build from nestbrain.app — or wire your own Google OAuth client (see README)."
+        title={t.tree.topbar.syncUnavailableTitle}
         className="flex items-center gap-2 h-7 px-3 rounded-md border border-border bg-card text-xs font-medium opacity-50 cursor-not-allowed"
       >
         <GoogleMark />
-        Sync — not available in the free build
+        {t.tree.topbar.syncUnavailable}
       </button>
     );
   }
@@ -76,7 +78,7 @@ function AccountWidget() {
         className="flex items-center gap-2 h-7 px-3 rounded-md border border-border bg-card hover:bg-card-hover text-xs font-medium transition-colors"
       >
         <GoogleMark />
-        Sign in with Google
+        {t.tree.topbar.signInGoogle}
       </button>
     );
   }
@@ -85,12 +87,12 @@ function AccountWidget() {
     return (
       <div style={noDrag} className="flex items-center gap-2 h-7 px-3 text-xs text-muted">
         <Loader2 size={13} className="animate-spin" />
-        <span>Waiting for browser…</span>
+        <span>{t.tree.topbar.waitingBrowser}</span>
         <button
           onClick={cancelSignIn}
           className="ml-2 text-muted/70 hover:text-foreground underline-offset-2 hover:underline"
         >
-          Cancel
+          {t.tree.topbar.cancel}
         </button>
       </div>
     );
@@ -99,12 +101,12 @@ function AccountWidget() {
   if (state.status === "error") {
     return (
       <div style={noDrag} className="flex items-center gap-2 h-7 px-3 text-xs text-red-400">
-        <span title={state.error}>Sign-in failed</span>
+        <span title={state.error}>{t.tree.topbar.signInFailed}</span>
         <button
           onClick={signIn}
           className="ml-1 text-foreground underline-offset-2 hover:underline"
         >
-          Retry
+          {t.tree.topbar.retry}
         </button>
       </div>
     );
@@ -135,14 +137,14 @@ function AccountWidget() {
             className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-card-hover transition-colors"
           >
             <SettingsIcon size={13} />
-            Sync &amp; Account settings
+            {t.tree.topbar.accountSettings}
           </Link>
           <button
             onClick={async () => { setMenuOpen(false); await signOut(); }}
             className="flex items-center gap-2 px-3 py-2 text-xs w-full text-left hover:bg-card-hover transition-colors text-red-400/90"
           >
             <LogOut size={13} />
-            Sign out
+            {t.tree.topbar.signOut}
           </button>
         </div>
       )}

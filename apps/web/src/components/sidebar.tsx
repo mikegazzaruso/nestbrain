@@ -21,18 +21,19 @@ import { FileTree } from "./file-tree";
 import { NewProjectModal } from "./new-project-modal";
 import { BranchIndicator } from "./branch-indicator";
 import { useModules } from "@/lib/modules-context";
+import { useT } from "@/lib/app-i18n";
 import { useTheme } from "@/lib/theme-context";
 import { useTerminal } from "@/lib/terminal-context";
 
 const navItems = [
-  { href: "/wiki", icon: BookOpen, label: "Wiki" },
-  { href: "/mindmap", icon: Network, label: "Mind Map" },
-  { href: "/search", icon: Search, label: "Search" },
-  { href: "/ask", icon: MessageCircle, label: "Ask" },
-  { href: "/ingest", icon: Download, label: "Ingest" },
-  { href: "/knowledge", icon: Lightbulb, label: "Knowledge" },
-  { href: "/health", icon: Activity, label: "Health" },
-  { href: "/settings", icon: Settings, label: "Settings" },
+  { href: "/wiki", icon: BookOpen, key: "wiki" as const },
+  { href: "/mindmap", icon: Network, key: "mindMap" as const },
+  { href: "/search", icon: Search, key: "search" as const },
+  { href: "/ask", icon: MessageCircle, key: "ask" as const },
+  { href: "/ingest", icon: Download, key: "ingest" as const },
+  { href: "/knowledge", icon: Lightbulb, key: "knowledge" as const },
+  { href: "/health", icon: Activity, key: "health" as const },
+  { href: "/settings", icon: Settings, key: "settings" as const },
 ];
 
 const MIN_WIDTH = 200;
@@ -43,6 +44,7 @@ const STORAGE_KEY = "nestbrain-sidebar-width";
 export function Sidebar() {
   const pathname = usePathname();
   const { modules } = useModules();
+  const { t } = useT();
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const isDragging = useRef(false);
   const [nestBrainPath, setNestBrainPath] = useState<string | null>(null);
@@ -211,7 +213,7 @@ export function Sidebar() {
         <nav className="flex-1 p-3 space-y-0.5 overflow-auto">
           {[
             ...navItems.slice(0, -1),
-            ...(modules.length > 0 ? [{ href: "/modules", icon: Blocks, label: "Modules" }] : []),
+            ...(modules.length > 0 ? [{ href: "/modules", icon: Blocks, key: "modules" as const }] : []),
             navItems[navItems.length - 1],
           ].map((item) => {
             const isActive =
@@ -229,7 +231,7 @@ export function Sidebar() {
                 }`}
               >
                 <Icon size={16} />
-                <span className="flex-1">{item.label}</span>
+                <span className="flex-1">{t.common.nav[item.key]}</span>
                 {isKnowledge && pendingCount > 0 && (
                   <span
                     className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-accent/15 text-accent"
@@ -279,11 +281,12 @@ export function Sidebar() {
 
 function ThemeToggle() {
   const { theme, toggle } = useTheme();
+  const { t } = useT();
   return (
     <button
       onClick={toggle}
       className="p-1.5 rounded-md text-muted/40 hover:text-muted hover:bg-card transition-colors"
-      title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+      title={theme === "dark" ? t.common.theme.switchToLight : t.common.theme.switchToDark}
     >
       {theme === "dark" ? <Sun size={13} /> : <Moon size={13} />}
     </button>

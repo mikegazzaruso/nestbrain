@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/lib/theme-context";
+import { useT } from "@/lib/app-i18n";
 
 // The map is canvas-drawn outside React, so theme reaches the standalone draw
 // helpers through this module-level flag, kept in sync by an effect.
@@ -293,6 +294,8 @@ function buildLayout(data: GraphData): LayoutResult {
 }
 
 export default function MindMapPage() {
+  const { t } = useT();
+  const tm = t.wiki.mindmap;
   const router = useRouter();
   const { theme } = useTheme();
   const light = theme === "light";
@@ -779,24 +782,24 @@ export default function MindMapPage() {
               value={query}
               onChange={(e) => { setQuery(e.target.value); setNotFound(false); }}
               onKeyDown={(e) => { if (e.key === "Enter") locate(query); }}
-              placeholder="Find a concept…"
+              placeholder={tm.findPlaceholder}
               className={`w-full px-3 py-1.5 bg-card border rounded-lg text-xs text-foreground placeholder:text-muted/40 focus:outline-none focus:border-accent/50 ${notFound ? "border-red-500/50" : "border-border"}`}
             />
-            {notFound && <span className="absolute -bottom-4 left-1 text-[10px] text-red-400/80">not found</span>}
+            {notFound && <span className="absolute -bottom-4 left-1 text-[10px] text-red-400/80">{tm.notFound}</span>}
           </div>
           <button
             onClick={() => locate(query)}
             className="text-[11px] text-muted/60 hover:text-foreground transition-colors shrink-0"
-            title="Locate"
-          >Locate</button>
+            title={tm.locate}
+          >{tm.locate}</button>
           <button
             onClick={() => loadGraph()}
             className="text-muted/50 hover:text-foreground transition-colors shrink-0"
-            title="Refresh graph from disk"
+            title={tm.refreshTitle}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
           </button>
-          <span className="text-[11px] text-muted/30 shrink-0">{graphData.nodes.length} nodes · {graphData.links.length} connections</span>
+          <span className="text-[11px] text-muted/30 shrink-0">{tm.stats(graphData.nodes.length, graphData.links.length)}</span>
         </div>
       </div>
 
@@ -805,7 +808,7 @@ export default function MindMapPage() {
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center text-muted">
               <div className="text-5xl mb-4">🕸️</div>
-              <p className="text-sm text-muted/50">No concepts yet. Ingest sources and compile.</p>
+              <p className="text-sm text-muted/50">{tm.empty}</p>
             </div>
           </div>
         ) : (
@@ -823,17 +826,17 @@ export default function MindMapPage() {
           <button
             onClick={() => { const r = canvasRef.current?.getBoundingClientRect(); if (r) applyZoom(1.3, r.left + r.width / 2, r.top + r.height / 2); }}
             className="w-8 h-8 flex items-center justify-center rounded-lg bg-card/80 backdrop-blur-sm border border-border text-foreground/70 hover:text-foreground hover:bg-card transition-colors text-sm font-medium"
-            title="Zoom in"
+            title={tm.zoomIn}
           >+</button>
           <button
             onClick={() => { const r = canvasRef.current?.getBoundingClientRect(); if (r) applyZoom(0.7, r.left + r.width / 2, r.top + r.height / 2); }}
             className="w-8 h-8 flex items-center justify-center rounded-lg bg-card/80 backdrop-blur-sm border border-border text-foreground/70 hover:text-foreground hover:bg-card transition-colors text-sm font-medium"
-            title="Zoom out"
+            title={tm.zoomOut}
           >−</button>
           <button
             onClick={fitToView}
             className="w-8 h-8 flex items-center justify-center rounded-lg bg-card/80 backdrop-blur-sm border border-border text-foreground/70 hover:text-foreground hover:bg-card transition-colors"
-            title="Reset view"
+            title={tm.resetView}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 1 9 9"/><polyline points="3 21 3 12 12 12"/></svg>
           </button>
@@ -844,7 +847,7 @@ export default function MindMapPage() {
             <div className="bg-card/90 backdrop-blur-md border border-border rounded-xl px-5 py-3 shadow-2xl flex items-center gap-4">
               <div>
                 <p className="text-sm font-medium">{graphData.nodes.find((n) => n.id === selectedNode)?.label}</p>
-                <p className="text-[11px] text-muted/50 mt-0.5">Click again to open</p>
+                <p className="text-[11px] text-muted/50 mt-0.5">{tm.clickAgain}</p>
               </div>
               <button
                 onClick={() => {
@@ -852,7 +855,7 @@ export default function MindMapPage() {
                   if (n) router.push(`/wiki?path=${encodeURIComponent(n.path)}`);
                 }}
                 className="px-3 py-1.5 bg-accent text-background text-xs font-medium rounded-lg hover:bg-accent-hover transition-colors"
-              >Open</button>
+              >{tm.open}</button>
             </div>
           </div>
         )}

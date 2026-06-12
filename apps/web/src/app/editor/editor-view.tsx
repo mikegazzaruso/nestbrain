@@ -18,13 +18,23 @@ import {
 } from "lucide-react";
 import { useEditorTabs } from "@/lib/editor-tabs-context";
 import { FileIcon } from "@/components/file-icon";
+import { useT } from "@/lib/app-i18n";
 
 type LoadState =
   | { kind: "loading" }
   | { kind: "ready"; content: string }
   | { kind: "binary"; size: number }
   | { kind: "tooLarge"; size: number }
-  | { kind: "error"; message: string };
+  | { kind: "error"; code: "noPath" | "desktopOnly" | "readFailed"; message?: string };
+
+export function EditorFallback() {
+  const { t } = useT();
+  return (
+    <div className="flex-1 flex items-center justify-center text-muted/50 text-sm">
+      {t.wiki.editor.loadingEditor}
+    </div>
+  );
+}
 
 // Resolves a language pack for the given filename using CodeMirror's
 // language-data index (~100 languages). The pack is loaded lazily via
@@ -59,6 +69,8 @@ function formatSize(bytes: number): string {
 }
 
 export function EditorView() {
+  const { t } = useT();
+  const te = t.wiki.editor;
   const router = useRouter();
   const params = useSearchParams();
   const filePath = params.get("path") ?? "";
@@ -107,11 +119,11 @@ export function EditorView() {
   // Load the file
   useEffect(() => {
     if (!filePath) {
-      setState({ kind: "error", message: "No file path provided" });
+      setState({ kind: "error", code: "noPath" });
       return;
     }
     if (typeof window === "undefined" || !window.nestbrain?.fs?.readFile) {
-      setState({ kind: "error", message: "Editor requires the desktop app" });
+      setState({ kind: "error", code: "desktopOnly" });
       return;
     }
     let cancelled = false;
@@ -134,7 +146,8 @@ export function EditorView() {
         if (cancelled) return;
         setState({
           kind: "error",
-          message: err instanceof Error ? err.message : "Failed to read file",
+          code: "readFailed",
+          message: err instanceof Error ? err.message : undefined,
         });
       });
     return () => {
@@ -154,10 +167,10 @@ export function EditorView() {
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 1500);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      setError(err instanceof Error ? err.message : te.saveFailed);
     }
     setSaving(false);
-  }, [content, originalContent, filePath, state.kind]);
+  }, [content, originalContent, filePath, state.kind, te]);
 
   // Cmd/Ctrl+S to save
   useEffect(() => {
@@ -196,9 +209,7 @@ export function EditorView() {
       const currentFull =
         window.location.pathname + window.location.search;
       if (href === currentFull || href === window.location.pathname) return;
-      const ok = window.confirm(
-        `"${fileName}" has unsaved changes. Leave without saving?`,
-      );
+      const ok = window.confirm(te.unsavedLeave(fileName));
       if (!ok) {
         e.preventDefault();
         e.stopPropagation();
@@ -206,13 +217,13 @@ export function EditorView() {
     }
     document.addEventListener("click", onClickCapture, true);
     return () => document.removeEventListener("click", onClickCapture, true);
-  }, [dirty, fileName]);
+  }, [dirty, fileName, te]);
 
   const handleClose = useCallback(
     (pathToClose: string = filePath, isDirty: boolean = dirty) => {
       if (isDirty) {
         const ok = window.confirm(
-          `"${pathToClose.split("/").pop()}" has unsaved changes. Close without saving?`,
+          te.unsavedClose(pathToClose.split("/").pop() ?? pathToClose),
         );
         if (!ok) return;
       }
@@ -223,7 +234,7 @@ export function EditorView() {
         router.push("/");
       }
     },
-    [dirty, filePath, closeTab, router],
+    [dirty, filePath, closeTab, router, te],
   );
 
   const extensions = useMemo(() => langExt, [langExt]);
@@ -250,17 +261,17 @@ export function EditorView() {
           {savedFlash && (
             <span className="flex items-center gap-1.5 text-[11px] text-green-400/80">
               <Check size={11} />
-              Saved
+              {te.saved}
             </span>
           )}
           <button
             onClick={handleSave}
             disabled={!dirty || saving}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-accent text-background text-[11px] font-medium rounded-md hover:bg-accent-hover transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-            title="Save (⌘S)"
+            title={te.saveTitle}
           >
             <Save size={11} />
-            Save
+            {te.save}
           </button>
         </div>
       </div>
@@ -270,27 +281,32 @@ export function EditorView() {
       <div className="flex-1 min-h-0 overflow-hidden">
         {state.kind === "loading" && (
           <div className="h-full flex items-center justify-center text-muted/50 text-sm">
-            Loading…
+            {te.loading}
           </div>
         )}
         {state.kind === "error" && (
           <div className="h-full flex items-center justify-center text-red-400/80 text-sm">
-            {state.message}
+            {state.message ??
+              (state.code === "noPath"
+                ? te.errNoPath
+                : state.code === "desktopOnly"
+                  ? te.errDesktopOnly
+                  : te.errReadFailed)}
           </div>
         )}
         {state.kind === "binary" && (
           <div className="h-full flex flex-col items-center justify-center text-muted/60 text-sm gap-2">
             <AlertTriangle size={20} className="text-muted/40" />
-            <p>Binary file — not editable</p>
+            <p>{te.binaryFile}</p>
             <p className="text-[11px] text-muted/40">{formatSize(state.size)}</p>
           </div>
         )}
         {state.kind === "tooLarge" && (
           <div className="h-full flex flex-col items-center justify-center text-muted/60 text-sm gap-2">
             <AlertTriangle size={20} className="text-muted/40" />
-            <p>File too large to edit ({formatSize(state.size)})</p>
+            <p>{te.tooLarge(formatSize(state.size))}</p>
             <p className="text-[11px] text-muted/40">
-              The in-app editor is capped at 1 MB.
+              {te.tooLargeHint}
             </p>
           </div>
         )}
@@ -337,6 +353,8 @@ function TabsStrip({
   onActivate: (path: string) => void;
   onClose: (path: string) => void;
 }) {
+  const { t } = useT();
+  const te = t.wiki.editor;
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [overflow, setOverflow] = useState(false);
 
@@ -370,7 +388,7 @@ function TabsStrip({
         <button
           onClick={() => scrollBy(-200)}
           className="px-1 py-2 text-muted/50 hover:text-foreground transition-colors shrink-0"
-          title="Scroll tabs left"
+          title={te.scrollLeft}
         >
           <ChevronLeft size={14} />
         </button>
@@ -405,7 +423,7 @@ function TabsStrip({
                     onClose(path);
                   }}
                   className="ml-1 shrink-0"
-                  title="Unsaved — click to close"
+                  title={te.unsavedDot}
                 >
                   <Circle size={8} className="text-accent fill-accent group-hover:hidden" />
                   <X
@@ -420,7 +438,7 @@ function TabsStrip({
                     onClose(path);
                   }}
                   className="ml-1 shrink-0 text-muted/30 group-hover:text-muted/60 hover:text-foreground transition-colors"
-                  title="Close"
+                  title={te.close}
                 >
                   <X size={13} />
                 </button>
@@ -433,7 +451,7 @@ function TabsStrip({
         <button
           onClick={() => scrollBy(200)}
           className="px-1 py-2 text-muted/50 hover:text-foreground transition-colors shrink-0"
-          title="Scroll tabs right"
+          title={te.scrollRight}
         >
           <ChevronRight size={14} />
         </button>

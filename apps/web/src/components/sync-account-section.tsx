@@ -13,10 +13,12 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { useSync } from "@/lib/sync-context";
 import { useTeamConnected } from "@/lib/use-team-connected";
+import { useT, type AppDict } from "@/lib/app-i18n";
 
 // Settings → Sync & Account section.
 // Drives the auth flow + the real sync preferences (Phase 2 onward).
 export function SyncAccountSection() {
+  const { t } = useT();
   const { state: auth, signIn, signOut, cancelSignIn } = useAuth();
   const { state: sync, setPreferences, syncNow, available: syncAvailable } = useSync();
   const teamConnected = useTeamConnected();
@@ -25,7 +27,7 @@ export function SyncAccountSection() {
     <section className="mb-10">
       <h2 className="text-sm font-medium text-muted/70 uppercase tracking-wider mb-4 flex items-center gap-2">
         <Cloud size={13} className="text-muted/60" />
-        Sync &amp; Account
+        {t.settings.syncAccount.title}
       </h2>
 
       <div className="p-5 rounded-xl bg-card border border-border space-y-4">
@@ -33,8 +35,7 @@ export function SyncAccountSection() {
           <div className="flex items-start gap-2 text-[11px] text-violet-300 bg-violet-500/10 border border-violet-500/25 rounded-lg px-3 py-2 leading-relaxed">
             <ShieldCheck size={13} className="shrink-0 mt-0.5" />
             <span>
-              <b>Google Drive Sync is disabled while Team Server is active.</b> Your knowledge
-              syncs through the Team Server instead. Disconnect Team Server to use Drive sync again.
+              <b>{t.settings.syncAccount.teamActiveBold}</b> {t.settings.syncAccount.teamActiveRest}
             </span>
           </div>
         )}
@@ -42,11 +43,12 @@ export function SyncAccountSection() {
         {auth.status === "unconfigured" && (
           <div className="flex items-start gap-4">
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium mb-1">Sync is not available in the free build</p>
+              <p className="text-sm font-medium mb-1">{t.settings.syncAccount.freeTitle}</p>
               <p className="text-[11px] text-muted/60 leading-relaxed">
-                Multi-device sync comes pre-configured in the official builds from{" "}
-                <span className="text-accent/80">nestbrain.app</span>. Building from source? You can
-                wire your own Google OAuth client — see <b>Google OAuth setup</b> in the README.
+                {t.settings.syncAccount.freeDescBefore}{" "}
+                <span className="text-accent/80">nestbrain.app</span>
+                {t.settings.syncAccount.freeDescMid} <b>{t.settings.syncAccount.freeDescGuide}</b>{" "}
+                {t.settings.syncAccount.freeDescAfter}
               </p>
             </div>
             <button
@@ -54,7 +56,7 @@ export function SyncAccountSection() {
               className="shrink-0 flex items-center gap-2 h-9 px-4 rounded-lg border border-border bg-background text-xs font-medium opacity-50 cursor-not-allowed"
             >
               <GoogleMark />
-              Sign in with Google
+              {t.settings.syncAccount.signInGoogle}
             </button>
           </div>
         )}
@@ -62,12 +64,11 @@ export function SyncAccountSection() {
         {auth.status === "signed-out" && (
           <div className="flex items-start gap-4">
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium mb-1">Sign in to enable Sync</p>
+              <p className="text-sm font-medium mb-1">{t.settings.syncAccount.signedOutTitle}</p>
               <p className="text-[11px] text-muted/60 leading-relaxed">
-                Sign in with Google to sync your NestBrain across all your
-                devices. We only access a dedicated{" "}
+                {t.settings.syncAccount.signedOutBefore}{" "}
                 <code className="text-accent/70 bg-accent/5 px-1 rounded">NestBrain-Sync</code>{" "}
-                folder we create in your Drive — never the rest of your files.
+                {t.settings.syncAccount.signedOutAfter}
               </p>
             </div>
             <button
@@ -75,7 +76,7 @@ export function SyncAccountSection() {
               className="shrink-0 flex items-center gap-2 h-9 px-4 rounded-lg border border-border bg-background hover:bg-card-hover text-xs font-medium transition-colors"
             >
               <GoogleMark />
-              Sign in with Google
+              {t.settings.syncAccount.signInGoogle}
             </button>
           </div>
         )}
@@ -83,24 +84,24 @@ export function SyncAccountSection() {
         {auth.status === "signing-in" && (
           <div className="flex items-center gap-3 text-sm text-muted">
             <Loader2 size={14} className="animate-spin" />
-            <span>Waiting for browser to complete sign-in…</span>
+            <span>{t.settings.syncAccount.waitingBrowser}</span>
             <button
               onClick={cancelSignIn}
               className="ml-auto text-xs text-muted/70 hover:text-foreground underline-offset-2 hover:underline"
             >
-              Cancel
+              {t.settings.syncAccount.cancel}
             </button>
           </div>
         )}
 
         {auth.status === "error" && (
           <div className="text-sm text-red-400 flex items-center gap-3">
-            <span>Sign-in failed: {auth.error}</span>
+            <span>{t.settings.syncAccount.signInFailed(auth.error)}</span>
             <button
               onClick={signIn}
               className="ml-auto text-xs text-foreground underline-offset-2 hover:underline"
             >
-              Retry
+              {t.settings.syncAccount.retry}
             </button>
           </div>
         )}
@@ -122,21 +123,21 @@ export function SyncAccountSection() {
                 className="shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-md text-xs text-red-400/90 hover:bg-red-500/10 transition-colors"
               >
                 <LogOut size={12} />
-                Sign out
+                {t.settings.syncAccount.signOut}
               </button>
             </div>
 
             <div className="pt-4 border-t border-border space-y-4">
               <PreferenceToggle
-                label="Enable sync on this device"
-                description="Push and pull changes to/from the NestBrain-Sync folder in your Google Drive."
+                label={t.settings.syncAccount.enableLabel}
+                description={t.settings.syncAccount.enableDesc}
                 checked={sync.prefs.enabled}
                 onChange={(v) => setPreferences({ enabled: v })}
                 disabled={!syncAvailable}
               />
               <PreferenceToggle
-                label="Include Projects/ folder"
-                description="Also sync the Projects/ subtree. Build artifacts (node_modules, .git, dist, .next) are always excluded. This toggle is per-device — disabling here only stops syncing on this machine; files already in Drive stay there for your other devices."
+                label={t.settings.syncAccount.projectsLabel}
+                description={t.settings.syncAccount.projectsDesc}
                 checked={sync.prefs.includeProjects}
                 onChange={(v) => setPreferences({ includeProjects: v })}
                 disabled={!syncAvailable || !sync.prefs.enabled}
@@ -170,6 +171,7 @@ function SyncStatusLine(props: {
   onSyncNow: () => void;
   disabled: boolean;
 }) {
+  const { t } = useT();
   const { status, lastSyncAt, error, currentFile, done, total, onSyncNow, disabled } = props;
 
   let body: React.ReactNode;
@@ -177,33 +179,33 @@ function SyncStatusLine(props: {
     body = (
       <span className="flex items-center gap-2">
         <Loader2 size={12} className="animate-spin text-accent" />
-        Scanning workspace…
+        {t.settings.syncAccount.scanning}
       </span>
     );
   } else if (status === "syncing") {
     body = (
       <span className="flex items-center gap-2">
         <Loader2 size={12} className="animate-spin text-accent" />
-        Syncing {done}/{total} — <span className="font-mono truncate max-w-[280px]">{currentFile ?? ""}</span>
+        {t.settings.syncAccount.syncing(done, total)}<span className="font-mono truncate max-w-[280px]">{currentFile ?? ""}</span>
       </span>
     );
   } else if (status === "error") {
     body = (
       <span className="flex items-center gap-2 text-red-400">
         <AlertCircle size={12} />
-        {error ?? "Sync failed"}
+        {error ?? t.settings.syncAccount.syncFailed}
       </span>
     );
   } else if (status === "disabled") {
-    body = <span className="text-muted/60">Sync is off.</span>;
+    body = <span className="text-muted/60">{t.settings.syncAccount.syncOff}</span>;
   } else {
     body = lastSyncAt ? (
       <span className="flex items-center gap-2 text-muted/70">
         <CheckCircle2 size={12} className="text-green-500/80" />
-        Last synced {formatRelative(lastSyncAt)}
+        {t.settings.syncAccount.lastSynced(formatRelative(lastSyncAt, t.settings.syncAccount))}
       </span>
     ) : (
-      <span className="text-muted/60">Idle — no sync yet.</span>
+      <span className="text-muted/60">{t.settings.syncAccount.idle}</span>
     );
   }
 
@@ -217,17 +219,17 @@ function SyncStatusLine(props: {
         className="shrink-0 flex items-center gap-1.5 h-7 px-3 rounded-md border border-border bg-background hover:bg-card-hover text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
       >
         <RefreshCw size={11} className={busy ? "animate-spin" : ""} />
-        Sync now
+        {t.settings.syncAccount.syncNow}
       </button>
     </div>
   );
 }
 
-function formatRelative(ms: number): string {
+function formatRelative(ms: number, dict: AppDict["settings"]["syncAccount"]): string {
   const diff = Date.now() - ms;
-  if (diff < 60_000) return "just now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  if (diff < 60_000) return dict.justNow;
+  if (diff < 3_600_000) return dict.minAgo(Math.floor(diff / 60_000));
+  if (diff < 86_400_000) return dict.hoursAgo(Math.floor(diff / 3_600_000));
   return new Date(ms).toLocaleString();
 }
 

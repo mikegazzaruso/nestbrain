@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Send, Trash2 } from "lucide-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { ProjectFilter } from "@/components/project-filter";
+import { useT } from "@/lib/app-i18n";
 
 interface QAEntry {
   question: string;
@@ -13,6 +14,7 @@ interface QAEntry {
 }
 
 export default function AskPage() {
+  const { t } = useT();
   const [question, setQuestion] = useState("");
   const [history, setHistory] = useState<QAEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -48,7 +50,7 @@ export default function AskPage() {
       if (data.error) {
         setHistory((prev) => [
           ...prev,
-          { question: q, answer: `Error: ${data.error}`, citations: [] },
+          { question: q, answer: t.searchask.ask.errorPrefix(data.error), citations: [] },
         ]);
       } else {
         // Auto-save to wiki outputs
@@ -76,7 +78,7 @@ export default function AskPage() {
     } catch {
       setHistory((prev) => [
         ...prev,
-        { question: q, answer: "Failed to get answer", citations: [] },
+        { question: q, answer: t.searchask.ask.failed, citations: [] },
       ]);
     }
     setLoading(false);
@@ -93,7 +95,7 @@ export default function AskPage() {
               <div className="text-center text-muted">
                 <div className="text-5xl mb-4">💬</div>
                 <p className="text-sm">
-                  Ask a question about your knowledge base
+                  {t.searchask.ask.emptyState}
                 </p>
               </div>
             </div>
@@ -114,7 +116,7 @@ export default function AskPage() {
 
                 {entry.citations.length > 0 && (
                   <div className="mt-4 pt-3 border-t border-border">
-                    <p className="text-xs text-muted mb-2">Sources:</p>
+                    <p className="text-xs text-muted mb-2">{t.searchask.ask.sources}</p>
                     <div className="flex flex-wrap gap-1.5">
                       {entry.citations.map((c, j) => {
                         // Parse [[path|title]] format
@@ -143,7 +145,7 @@ export default function AskPage() {
                       href={`/wiki?path=${encodeURIComponent(entry.savedTo)}`}
                       className="text-xs text-accent/60 hover:text-accent transition-colors"
                     >
-                      Saved to wiki → {entry.savedTo}
+                      {t.searchask.ask.savedTo(entry.savedTo)}
                     </a>
                     <button
                       onClick={async () => {
@@ -157,7 +159,7 @@ export default function AskPage() {
                       className="text-xs text-red-400/50 hover:text-red-400 transition-colors flex items-center gap-1"
                     >
                       <Trash2 size={11} />
-                      Delete
+                      {t.searchask.ask.delete}
                     </button>
                   </div>
                 )}
@@ -189,7 +191,7 @@ export default function AskPage() {
 
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium text-foreground/80">Researching your knowledge base</p>
+                      <p className="text-sm font-medium text-foreground/80">{t.searchask.ask.researching}</p>
                     </div>
                     {/* Animated progress bar */}
                     <div className="mt-2 h-0.5 w-full bg-border rounded-full overflow-hidden">
@@ -200,7 +202,7 @@ export default function AskPage() {
 
                 {/* Floating keywords */}
                 <div className="mt-3 flex gap-2 overflow-hidden">
-                  {["Searching vectors", "Reading articles", "Composing answer"].map((text, i) => (
+                  {t.searchask.ask.phases.map((text, i) => (
                     <span
                       key={text}
                       className="text-[10px] text-muted/40 px-2 py-0.5 rounded-full bg-border/30 animate-pulse"
@@ -227,7 +229,11 @@ export default function AskPage() {
               type="text"
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
-              placeholder={project ? `Ask about ${project}…` : "Ask anything about your knowledge base..."}
+              placeholder={
+                project
+                  ? t.searchask.ask.placeholderProject(project)
+                  : t.searchask.ask.placeholder
+              }
               className="flex-1 px-4 py-3 bg-card border border-border rounded-xl text-sm text-foreground placeholder:text-muted/50 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
               disabled={loading}
               autoFocus

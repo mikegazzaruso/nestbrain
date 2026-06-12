@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Check, Loader2, Terminal, Trash2 } from "lucide-react";
+import { useT } from "@/lib/app-i18n";
 
 interface CliStatus {
   supported: boolean;
@@ -18,6 +19,7 @@ interface CliStatus {
  * prompt via osascript; on Windows it's user-scoped and silent.
  */
 export function CliInstallSection() {
+  const { t } = useT();
   const [status, setStatus] = useState<CliStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,21 +73,20 @@ export function CliInstallSection() {
   return (
     <section className="mb-10">
       <h2 className="text-sm font-medium text-muted/70 uppercase tracking-wider mb-4">
-        Command line
+        {t.settings.cli.title}
       </h2>
       <div className="p-5 rounded-xl bg-card border border-border">
         <div className="flex items-start gap-3 mb-4">
           <Terminal size={18} className="text-accent mt-0.5 shrink-0" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium">
-              Install <code className="px-1 py-0.5 rounded bg-muted/10 font-mono text-[12px]">nestbrain</code> on PATH
+              {t.settings.cli.installBefore} <code className="px-1 py-0.5 rounded bg-muted/10 font-mono text-[12px]">nestbrain</code> {t.settings.cli.installAfter}
             </p>
             <p className="text-[11px] text-muted/60 leading-relaxed mt-1">
-              Makes the CLI available in any terminal session — so Claude Code skills,
-              git hooks, and your own scripts can invoke <code className="font-mono">nestbrain</code> directly.
+              {t.settings.cli.descBefore} <code className="font-mono">nestbrain</code> {t.settings.cli.descAfter}
               {status?.target && (
                 <>
-                  {" "}Installs to{" "}
+                  {" "}{t.settings.cli.installsTo}{" "}
                   <code className="font-mono text-muted/80 break-all">{status.target}</code>.
                 </>
               )}
@@ -98,18 +99,18 @@ export function CliInstallSection() {
             {!status ? (
               <span className="text-muted/60">
                 <Loader2 size={12} className="inline animate-spin mr-1" />
-                Checking…
+                {t.settings.cli.checking}
               </span>
             ) : status.installed && !status.stale ? (
               <span className="text-emerald-300 inline-flex items-center gap-1">
-                <Check size={13} /> Installed
+                <Check size={13} /> {t.settings.cli.installed}
               </span>
             ) : status.installed && status.stale ? (
               <span className="text-amber-300 inline-flex items-center gap-1">
-                <AlertTriangle size={13} /> Installed but stale (re-install to fix)
+                <AlertTriangle size={13} /> {t.settings.cli.stale}
               </span>
             ) : (
-              <span className="text-muted/60">Not installed</span>
+              <span className="text-muted/60">{t.settings.cli.notInstalled}</span>
             )}
           </div>
 
@@ -120,7 +121,7 @@ export function CliInstallSection() {
                 disabled={busy}
                 className="px-3 py-1.5 rounded-md text-xs text-muted hover:text-red-300 hover:bg-red-500/10 transition-colors disabled:opacity-40 inline-flex items-center gap-1.5"
               >
-                <Trash2 size={13} /> Uninstall
+                <Trash2 size={13} /> {t.settings.cli.uninstall}
               </button>
             )}
             <button
@@ -130,10 +131,10 @@ export function CliInstallSection() {
             >
               {busy ? <Loader2 size={13} className="animate-spin" /> : <Terminal size={13} />}
               {status?.installed && status.stale
-                ? "Re-install"
+                ? t.settings.cli.reinstall
                 : status?.installed
-                  ? "Installed"
-                  : "Install"}
+                  ? t.settings.cli.installed
+                  : t.settings.cli.install}
             </button>
           </div>
         </div>

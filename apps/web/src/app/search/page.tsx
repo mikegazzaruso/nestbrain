@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Search as SearchIcon, FileText } from "lucide-react";
 import { ProjectFilter } from "@/components/project-filter";
+import { useT } from "@/lib/app-i18n";
 
 interface SearchResult {
   articleId: string;
@@ -14,6 +15,7 @@ interface SearchResult {
 }
 
 export default function SearchPage() {
+  const { t } = useT();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -52,7 +54,7 @@ export default function SearchPage() {
     <div className="flex-1 p-8">
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight">Search</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{t.searchask.search.title}</h1>
           <ProjectFilter value={project} onChange={setProject} />
         </div>
 
@@ -66,7 +68,11 @@ export default function SearchPage() {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder={project ? `Search ${project}…` : "Search your knowledge base..."}
+              placeholder={
+                project
+                  ? t.searchask.search.placeholderProject(project)
+                  : t.searchask.search.placeholder
+              }
               className="w-full pl-12 pr-4 py-3 bg-card border border-border rounded-xl text-sm text-foreground placeholder:text-muted/50 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
               autoFocus
             />
@@ -74,17 +80,17 @@ export default function SearchPage() {
         </form>
 
         {searching && (
-          <p className="text-sm text-muted">Searching...</p>
+          <p className="text-sm text-muted">{t.searchask.search.searching}</p>
         )}
 
         {!searching && searched && results.length === 0 && (
-          <p className="text-sm text-muted">No results found.</p>
+          <p className="text-sm text-muted">{t.searchask.search.noResults}</p>
         )}
 
         {results.length > 0 && (
           <div className="space-y-3">
             <p className="text-xs text-muted mb-4">
-              {results.length} result{results.length !== 1 ? "s" : ""}
+              {t.searchask.search.resultCount(results.length)}
             </p>
             {results.map((result) => (
               <a

@@ -3,10 +3,12 @@
 import { Terminal as TerminalIcon, ChevronUp, ChevronDown } from "lucide-react";
 import { useTerminal } from "@/lib/terminal-context";
 import { useModules } from "@/lib/modules-context";
+import { useT } from "@/lib/app-i18n";
 import { SyncIndicator } from "./sync-indicator";
 
 export function StatusBar() {
   const { has } = useModules();
+  const { t } = useT();
   const { sessions, panelOpen, toggleOrOpen } = useTerminal();
   const count = sessions.length;
 
@@ -19,10 +21,10 @@ export function StatusBar() {
         className={`flex items-center gap-1.5 px-2.5 h-full hover:bg-card transition-colors ${
           panelOpen && count > 0 ? "text-accent" : "text-muted/70 hover:text-foreground"
         }`}
-        title={panelOpen ? "Hide terminal" : "Show terminal"}
+        title={panelOpen ? t.common.statusBar.hideTerminal : t.common.statusBar.showTerminal}
       >
         <TerminalIcon size={12} />
-        <span>Terminal</span>
+        <span>{t.common.statusBar.terminal}</span>
         {count > 0 && (
           <span className="text-[9px] px-1 rounded bg-accent/20 text-accent/90">
             {count}

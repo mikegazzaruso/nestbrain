@@ -14,6 +14,7 @@ import {
   Settings as SettingsIcon,
 } from "lucide-react";
 import { useCompile } from "@/lib/compile-context";
+import { useT } from "@/lib/app-i18n";
 
 interface IngestEntry {
   source: string;
@@ -36,6 +37,7 @@ interface DuplicateInfo {
 }
 
 export default function IngestPage() {
+  const { t } = useT();
   const [source, setSource] = useState("");
   const [entries, setEntries] = useState<IngestEntry[]>([]);
   const [ingesting, setIngesting] = useState(false);
@@ -152,7 +154,7 @@ export default function IngestPage() {
     } catch {
       setEntries((prev) =>
         prev.map((e, i) =>
-          i === idx ? { ...e, status: "error", error: "Network error" } : e
+          i === idx ? { ...e, status: "error", error: t.searchask.ingest.networkError } : e
         )
       );
     }
@@ -184,9 +186,9 @@ export default function IngestPage() {
   return (
     <div className="flex-1 p-8">
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-2xl font-semibold tracking-tight mb-2">Ingest</h1>
+        <h1 className="text-2xl font-semibold tracking-tight mb-2">{t.searchask.ingest.title}</h1>
         <p className="text-sm text-muted mb-8">
-          Add sources to your knowledge base. Paste a URL, or upload files.
+          {t.searchask.ingest.subtitle}
         </p>
 
         {/* URL input */}
@@ -202,7 +204,7 @@ export default function IngestPage() {
                 type="text"
                 value={source}
                 onChange={(e) => setSource(e.target.value)}
-                placeholder="URL (web, GitHub, arXiv, YouTube, RSS) or file path"
+                placeholder={t.searchask.ingest.urlPlaceholder}
                 className="w-full pl-12 pr-4 py-3 bg-card border border-border rounded-xl text-sm text-foreground placeholder:text-muted/50 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
                 disabled={ingesting}
                 autoFocus
@@ -214,7 +216,7 @@ export default function IngestPage() {
               className="px-5 py-3 bg-accent text-background text-sm font-medium rounded-xl hover:bg-accent-hover transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
             >
               <Upload size={16} />
-              Ingest
+              {t.searchask.ingest.ingestButton}
             </button>
           </div>
         </form>
@@ -241,10 +243,10 @@ export default function IngestPage() {
             }`}
           />
           <p className="text-sm text-muted mb-1">
-            Drop files here or{" "}
-            <span className="text-accent">click to browse</span>
+            {t.searchask.ingest.dropHere}{" "}
+            <span className="text-accent">{t.searchask.ingest.clickToBrowse}</span>
           </p>
-          <p className="text-xs text-muted/60">Supports .md, .pdf files</p>
+          <p className="text-xs text-muted/60">{t.searchask.ingest.supports}</p>
           <input
             ref={fileInputRef}
             type="file"
@@ -259,7 +261,7 @@ export default function IngestPage() {
         {entries.length > 0 && (
           <div className="space-y-3 mb-8">
             <h2 className="text-sm font-medium text-muted uppercase tracking-wider mb-3">
-              Activity
+              {t.searchask.ingest.activity}
             </h2>
             {entries.map((entry, i) => (
               <div
@@ -305,7 +307,7 @@ export default function IngestPage() {
         {sources.length > 0 && (
           <div className="space-y-3">
             <h2 className="text-sm font-medium text-muted uppercase tracking-wider mb-3">
-              Ingested Sources ({sources.length})
+              {t.searchask.ingest.ingestedSources(sources.length)}
             </h2>
             {sources.map((src) => (
               <div
@@ -335,25 +337,25 @@ export default function IngestPage() {
             <div className="flex items-center gap-3 mb-3">
               <AlertCircle size={20} className="text-amber-400 shrink-0" />
               <h3 className="text-sm font-semibold text-foreground">
-                Duplicate source
+                {t.searchask.ingest.duplicateTitle}
               </h3>
             </div>
             <p className="text-xs text-muted/70 leading-relaxed mb-5">
               <span className="font-medium text-foreground">&ldquo;{duplicatePrompt.existingTitle}&rdquo;</span>{" "}
-              has already been ingested. Do you want to add it again?
+              {t.searchask.ingest.duplicateBody}
             </p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setDuplicatePrompt(null)}
                 className="px-4 py-2 text-xs text-muted hover:text-foreground border border-border rounded-lg hover:bg-card-hover transition-colors"
               >
-                Cancel
+                {t.searchask.ingest.cancel}
               </button>
               <button
                 onClick={() => duplicatePrompt.retryFn()}
                 className="px-4 py-2 text-xs bg-accent text-background font-medium rounded-lg hover:bg-accent-hover transition-colors"
               >
-                Add anyway
+                {t.searchask.ingest.addAnyway}
               </button>
             </div>
           </div>
@@ -380,16 +382,16 @@ export default function IngestPage() {
               <AlertCircle size={18} className="text-accent shrink-0 mt-0.5" />
               <div className="text-sm">
                 <p className="text-foreground font-medium mb-1">
-                  Don&apos;t forget to compile!
+                  {t.searchask.ingest.toastTitle}
                 </p>
                 <p className="text-muted/70 text-xs leading-relaxed">
-                  Click the compile button in the sidebar to process your new sources. Or enable auto-compile in{" "}
+                  {t.searchask.ingest.toastBody}{" "}
                   <button
                     onClick={() => router.push("/settings")}
                     className="text-accent hover:underline font-medium inline-flex items-center gap-0.5"
                   >
                     <SettingsIcon size={11} />
-                    Settings
+                    {t.searchask.ingest.settings}
                   </button>
                   .
                 </p>

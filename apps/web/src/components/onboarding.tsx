@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { useSync } from "@/lib/sync-context";
+import { useT } from "@/lib/app-i18n";
 
 type Step =
   | "welcome"
@@ -46,6 +47,8 @@ interface OpenAIModel {
 }
 
 export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
+  const { t } = useT();
+  const to = t.wiki.onboarding;
   const [step, setStep] = useState<Step>("welcome");
   const [transitioning, setTransitioning] = useState(false);
   const router = useRouter();
@@ -151,14 +154,14 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
   async function handlePickDirectory() {
     setDirError(null);
     if (!window.nestbrain) {
-      setDirError("Native directory picker not available.");
+      setDirError(to.pickerUnavailable);
       return;
     }
     try {
       const picked = await window.nestbrain.selectDirectory();
       if (picked) setParentPath(picked);
     } catch (err) {
-      setDirError(err instanceof Error ? err.message : "Failed to open picker");
+      setDirError(err instanceof Error ? err.message : to.pickerFailed);
     }
   }
 
@@ -173,7 +176,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
       await new Promise((r) => setTimeout(r, 600));
       next("settings");
     } catch (err) {
-      setDirError(err instanceof Error ? err.message : "Failed to create folder");
+      setDirError(err instanceof Error ? err.message : to.createFailed);
     }
     setCreatingDir(false);
   }
@@ -263,18 +266,17 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
             </div>
             <div className="space-y-3">
               <h1 className="text-5xl font-bold tracking-tight">
-                Welcome to <span className="text-accent">NestBrain</span>
+                {to.welcomeTitle} <span className="text-accent">NestBrain</span>
               </h1>
               <p className="text-lg text-muted/80 max-w-lg mx-auto leading-relaxed">
-                Your personal, LLM‑powered knowledge base. Let&apos;s get you set
-                up in under a minute.
+                {to.welcomeDesc}
               </p>
             </div>
             <button
               onClick={() => next("explain")}
               className="inline-flex items-center gap-2 px-8 py-4 bg-accent text-background font-semibold rounded-2xl hover:bg-accent-hover transition-all hover:scale-105 shadow-xl shadow-accent/20"
             >
-              Get started
+              {to.getStarted}
               <ArrowRight size={18} />
             </button>
           </div>
@@ -284,20 +286,18 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
           <div className="space-y-8 animate-fade-in">
             <div className="text-center space-y-3">
               <h2 className="text-3xl font-bold tracking-tight">
-                A second brain that organizes itself
+                {to.explainTitle}
               </h2>
               <p className="text-muted/80 max-w-lg mx-auto">
-                NestBrain ingests articles, papers, repos, videos, and PDFs — then
-                an LLM compiles them into an interconnected wiki you can browse,
-                search, and question.
+                {to.explainDesc}
               </p>
             </div>
 
             <div className="grid grid-cols-3 gap-4">
               {[
-                { icon: BookOpen, label: "Wiki", desc: "Auto‑generated" },
-                { icon: Network, label: "Mind Map", desc: "Visual graph" },
-                { icon: SearchIcon, label: "Semantic Q&A", desc: "Ask anything" },
+                { icon: BookOpen, label: "Wiki", desc: to.featureWikiDesc },
+                { icon: Network, label: "Mind Map", desc: to.featureMapDesc },
+                { icon: SearchIcon, label: to.featureQaTitle, desc: to.featureQaDesc },
               ].map(({ icon: Icon, label, desc }) => (
                 <div
                   key={label}
@@ -312,10 +312,8 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
 
             <div className="p-5 rounded-2xl bg-gradient-to-br from-accent/5 to-purple-500/5 border border-accent/20">
               <p className="text-sm text-muted/80 leading-relaxed">
-                <span className="text-foreground font-medium">NestBrain</span> is
-                NestBrain&apos;s home on your disk — a self‑contained workspace
-                with folders for Business, Projects, Skills, Library, and more.
-                Think of it as an operating system for your thoughts.
+                <span className="text-foreground font-medium">NestBrain</span>
+                {to.explainHome}
               </p>
             </div>
 
@@ -324,7 +322,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
                 onClick={() => next("directory")}
                 className="inline-flex items-center gap-2 px-7 py-3.5 bg-accent text-background font-semibold rounded-2xl hover:bg-accent-hover transition-all hover:scale-105 shadow-xl shadow-accent/20"
               >
-                Continue
+                {to.continue}
                 <ArrowRight size={18} />
               </button>
             </div>
@@ -338,14 +336,14 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
                 <FolderPlus size={28} className="text-white" />
               </div>
               <h2 className="text-3xl font-bold tracking-tight">
-                Choose a home for NestBrain
+                {to.dirTitle}
               </h2>
               <p className="text-muted/80 max-w-md mx-auto">
-                Pick a parent directory. We&apos;ll create{" "}
+                {to.dirDescBefore}{" "}
                 <code className="text-accent/90 bg-accent/5 px-1.5 py-0.5 rounded text-xs">
                   NestBrain/
                 </code>{" "}
-                inside it with the full workspace structure.
+                {to.dirDescAfter}
               </p>
             </div>
 
@@ -359,14 +357,14 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
                   className="text-muted/60 group-hover:text-accent transition-colors"
                 />
                 <span className="text-sm text-muted/80 group-hover:text-foreground transition-colors">
-                  {parentPath ? parentPath : "Click to browse…"}
+                  {parentPath ? parentPath : to.browse}
                 </span>
               </button>
 
               {parentPath && (
                 <div className="p-4 rounded-xl bg-background/50 border border-border">
                   <p className="text-[11px] text-muted/50 uppercase tracking-wider mb-2">
-                    Will be created at
+                    {to.willBeCreated}
                   </p>
                   <p className="text-xs font-mono text-accent break-all">
                     {parentPath}/NestBrain
@@ -396,7 +394,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
                 onClick={() => next("explain")}
                 className="text-sm text-muted/60 hover:text-muted transition-colors"
               >
-                ← Back
+                {to.back}
               </button>
               <button
                 onClick={handleCreateNestBrain}
@@ -406,11 +404,11 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
                 {creatingDir ? (
                   <>
                     <Loader2 size={18} className="animate-spin" />
-                    Creating…
+                    {to.creating}
                   </>
                 ) : (
                   <>
-                    Create NestBrain
+                    {to.createNestBrain}
                     <ArrowRight size={18} />
                   </>
                 )}
@@ -426,10 +424,10 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
                 <Cpu size={28} className="text-white" />
               </div>
               <h2 className="text-3xl font-bold tracking-tight">
-                Pick your LLM provider
+                {to.providerTitle}
               </h2>
               <p className="text-muted/80 max-w-md mx-auto text-sm">
-                NestBrain needs an LLM to compile and query your knowledge base.
+                {to.providerDesc}
               </p>
             </div>
 
@@ -450,9 +448,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
                   )}
                 </div>
                 <p className="text-[11px] text-muted/60 leading-relaxed">
-                  Uses your Claude subscription via the official CLI
-                  (<code className="text-accent/70">claude -p</code>). No API
-                  key, no bans — fully supported.
+                  {to.claudeDesc1}<code className="text-accent/70">claude -p</code>{to.claudeDesc2}
                 </p>
               </button>
 
@@ -471,7 +467,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
                   )}
                 </div>
                 <p className="text-[11px] text-muted/60 leading-relaxed">
-                  Bring your own OpenAI API key. Pay‑as‑you‑go usage.
+                  {to.openaiDesc}
                 </p>
               </button>
             </div>
@@ -481,7 +477,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
               {provider === "claude-cli" ? (
                 <div>
                   <label className="block text-[11px] text-muted/70 uppercase tracking-wider mb-2">
-                    Model
+                    {to.model}
                   </label>
                   <select
                     value={claudeModel}
@@ -493,16 +489,16 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
                     <option value="haiku">Claude Haiku 4.5</option>
                   </select>
                   <p className="text-[10px] text-muted/40 mt-2">
-                    Authenticated via your Claude CLI session. Run{" "}
-                    <code className="text-accent/60">claude auth login</code> if
-                    needed.
+                    {to.claudeAuth1}{" "}
+                    <code className="text-accent/60">claude auth login</code>{" "}
+                    {to.claudeAuth2}
                   </p>
                 </div>
               ) : (
                 <>
                   <div>
                     <label className="block text-[11px] text-muted/70 uppercase tracking-wider mb-2">
-                      API Key
+                      {to.apiKey}
                     </label>
                     <div className="relative">
                       <Key
@@ -531,12 +527,12 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
 
                   <div>
                     <label className="block text-[11px] text-muted/70 uppercase tracking-wider mb-2">
-                      Model
+                      {to.model}
                     </label>
                     {modelsLoading ? (
                       <div className="flex items-center gap-2 px-3 py-2.5 text-xs text-muted">
                         <Loader2 size={12} className="animate-spin" />
-                        Loading…
+                        {to.loading}
                       </div>
                     ) : (
                       <select
@@ -569,7 +565,7 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
                 onClick={() => next("directory")}
                 className="text-sm text-muted/60 hover:text-muted transition-colors"
               >
-                ← Back
+                {to.back}
               </button>
               <button
                 onClick={handleSaveSettings}
@@ -579,11 +575,11 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
                 {savingSettings ? (
                   <>
                     <Loader2 size={18} className="animate-spin" />
-                    Saving…
+                    {to.saving}
                   </>
                 ) : (
                   <>
-                    Save & continue
+                    {to.saveContinue}
                     <ArrowRight size={18} />
                   </>
                 )}
@@ -620,11 +616,10 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
 
             <div className="space-y-3">
               <h1 className="text-4xl font-bold tracking-tight">
-                You&apos;re all set!
+                {to.celebrateTitle}
               </h1>
               <p className="text-lg text-muted/80 max-w-md mx-auto leading-relaxed">
-                Your NestBrain is ready. Have a splendid experience building
-                your second brain with NestBrain.
+                {to.celebrateDesc}
               </p>
             </div>
           </div>
@@ -638,6 +633,8 @@ export function OnboardingFlow({ onFinish }: { onFinish: () => void }) {
 // Login is optional here — the user can always sign in later from Settings —
 // but we make clear that Sync is gated on being signed in.
 function SyncStep({ onContinue }: { onContinue: () => void }) {
+  const { t } = useT();
+  const to = t.wiki.onboarding;
   const { state, signIn, signOut, cancelSignIn } = useAuth();
   const { state: sync, setPreferences } = useSync();
   const enabled = sync.prefs.enabled;
@@ -659,13 +656,12 @@ function SyncStep({ onContinue }: { onContinue: () => void }) {
           <Cloud size={28} className="text-white" />
         </div>
         <h2 className="text-3xl font-bold tracking-tight">
-          Sync across your devices
+          {to.syncTitle}
         </h2>
         <p className="text-muted/80 max-w-md mx-auto text-sm leading-relaxed">
-          Sign in with Google to keep your NestBrain in lockstep across every
-          machine you use. Same login, same vault.{" "}
+          {to.syncDesc}{" "}
           <span className="text-foreground/70">
-            Sync is optional and only works when you&apos;re signed in.
+            {to.syncOptional}
           </span>
         </p>
       </div>
@@ -674,18 +670,18 @@ function SyncStep({ onContinue }: { onContinue: () => void }) {
         {[
           {
             icon: Laptop,
-            title: "Every device",
-            desc: "Laptop, desktop, anywhere — same workspace.",
+            title: to.syncDeviceTitle,
+            desc: to.syncDeviceDesc,
           },
           {
             icon: Shield,
-            title: "Union-only",
-            desc: "Files are merged, never deleted. A .trash/ folder catches anything you remove.",
+            title: to.syncUnionTitle,
+            desc: to.syncUnionDesc,
           },
           {
             icon: Folders,
-            title: "Optional Projects",
-            desc: "Choose whether your code Projects/ travels along too.",
+            title: to.syncProjectsTitle,
+            desc: to.syncProjectsDesc,
           },
         ].map(({ icon: Icon, title, desc }) => (
           <div
@@ -707,12 +703,12 @@ function SyncStep({ onContinue }: { onContinue: () => void }) {
               className="inline-flex items-center gap-2.5 h-10 px-5 rounded-xl border border-border bg-background hover:bg-card-hover text-sm font-medium transition-colors"
             >
               <GoogleMark />
-              Sign in with Google
+              {to.signInGoogle}
             </button>
             <p className="text-[11px] text-muted/50 text-center max-w-sm leading-relaxed">
-              We only access a dedicated{" "}
+              {to.drivePrivacy1}{" "}
               <code className="text-accent/70 bg-accent/5 px-1 rounded">NestBrain-Sync</code>{" "}
-              folder we create in your Drive — never the rest of your files.
+              {to.drivePrivacy2}
             </p>
           </div>
         )}
@@ -720,24 +716,24 @@ function SyncStep({ onContinue }: { onContinue: () => void }) {
         {state.status === "signing-in" && (
           <div className="flex items-center justify-center gap-3 py-4 text-sm text-muted">
             <Loader2 size={14} className="animate-spin" />
-            <span>Waiting for browser to complete sign-in…</span>
+            <span>{to.waitingSignIn}</span>
             <button
               onClick={cancelSignIn}
               className="ml-2 text-xs text-muted/70 hover:text-foreground underline-offset-2 hover:underline"
             >
-              Cancel
+              {to.cancel}
             </button>
           </div>
         )}
 
         {state.status === "error" && (
           <div className="flex items-center gap-3 py-3 text-sm">
-            <span className="text-red-400 flex-1">Sign-in failed: {state.error}</span>
+            <span className="text-red-400 flex-1">{to.signInFailed(state.error)}</span>
             <button
               onClick={signIn}
               className="text-xs text-foreground underline-offset-2 hover:underline"
             >
-              Retry
+              {to.retry}
             </button>
           </div>
         )}
@@ -748,7 +744,7 @@ function SyncStep({ onContinue }: { onContinue: () => void }) {
               <SyncAvatar user={state.user} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">
-                  Signed in as {state.user.name ?? state.user.email}
+                  {to.signedInAs(state.user.name ?? state.user.email)}
                 </p>
                 {state.user.name && (
                   <p className="text-[11px] text-muted/60 truncate">
@@ -760,25 +756,25 @@ function SyncStep({ onContinue }: { onContinue: () => void }) {
                 onClick={signOut}
                 className="text-[11px] text-muted/60 hover:text-foreground underline-offset-2 hover:underline"
               >
-                Use another account
+                {to.useAnother}
               </button>
             </div>
 
             <div className="pt-4 border-t border-border space-y-4">
               <SyncToggle
-                label="Enable sync on this device"
-                description="Push and pull changes to/from your Google Drive. Starts the initial upload right after this step."
+                label={to.enableSyncLabel}
+                description={to.enableSyncDesc}
                 checked={enabled}
                 onChange={(v) => setPreferences({ enabled: v })}
               />
               <SyncToggle
-                label="Include Projects/ folder"
-                description="Also sync your Projects/ subtree. node_modules, .git, and build dirs are always excluded. Per-device toggle: disabling later won't remove what's already on Drive."
+                label={to.includeProjectsLabel}
+                description={to.includeProjectsDesc}
                 checked={includeProjects}
                 onChange={(v) => setPreferences({ includeProjects: v })}
               />
               <p className="text-[10px] text-muted/50 leading-relaxed">
-                You can flip these any time from Settings → Sync &amp; Account.
+                {to.flipAnytime}
               </p>
             </div>
           </div>
@@ -790,13 +786,13 @@ function SyncStep({ onContinue }: { onContinue: () => void }) {
           onClick={() => onContinue()}
           className="text-sm text-muted/60 hover:text-muted transition-colors"
         >
-          {state.status === "signed-in" ? "← Set up sync later" : "Skip for now"}
+          {state.status === "signed-in" ? to.setupLater : to.skipForNow}
         </button>
         <button
           onClick={onContinue}
           className="inline-flex items-center gap-2 px-7 py-3.5 bg-accent text-background font-semibold rounded-2xl hover:bg-accent-hover transition-all hover:scale-105 shadow-xl shadow-accent/20"
         >
-          Continue
+          {to.continue}
           <ArrowRight size={18} />
         </button>
       </div>
@@ -882,6 +878,8 @@ function CoachCard({
   initialCount: number;
   onSkip: () => void;
 }) {
+  const { t } = useT();
+  const to = t.wiki.onboarding;
   const isIngest = step === "firstIngest";
   const isCompile = step === "compileGuide";
 
@@ -964,7 +962,7 @@ function CoachCard({
           <button
             onClick={onSkip}
             className="absolute top-3 right-3 text-muted/40 hover:text-muted"
-            title="Skip"
+            title={to.skip}
           >
             <X size={14} />
           </button>
@@ -977,20 +975,19 @@ function CoachCard({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-[10px] font-semibold text-accent uppercase tracking-wider">
-                    Step 5 of 6
+                    {to.stepOf(5, 6)}
                   </span>
                 </div>
                 <h3 className="text-sm font-semibold mb-1">
-                  Add your first source
+                  {to.ingestTitle}
                 </h3>
                 <p className="text-xs text-muted/70 leading-relaxed">
-                  Paste a URL (article, YouTube, GitHub, arXiv…) or drop a PDF
-                  above. I&apos;ll wait right here.
+                  {to.ingestDesc}
                 </p>
                 <div className="mt-3 flex items-center gap-2">
                   <Loader2 size={12} className="text-accent animate-spin" />
                   <span className="text-[11px] text-muted/60">
-                    Waiting for your first ingest…
+                    {to.waitingIngest}
                   </span>
                 </div>
               </div>
@@ -1005,23 +1002,23 @@ function CoachCard({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-[10px] font-semibold text-accent uppercase tracking-wider">
-                    Step 6 of 6
+                    {to.stepOf(6, 6)}
                   </span>
                 </div>
                 <h3 className="text-sm font-semibold mb-1">
-                  Generate your knowledge
+                  {to.compileTitle}
                 </h3>
                 <p className="text-xs text-muted/70 leading-relaxed">
-                  New sources need to be <strong className="text-foreground">compiled</strong>.
-                  Click the compile button in the sidebar (the arrow points at
-                  it), or open Settings and enable{" "}
-                  <strong className="text-accent">auto‑compile</strong> to do it
-                  automatically after every ingest.
+                  {to.compileDesc1}
+                  <strong className="text-foreground">{to.compileStrong1}</strong>
+                  {to.compileDesc2}
+                  <strong className="text-accent">{to.compileStrong2}</strong>
+                  {to.compileDesc3}
                 </p>
                 <div className="mt-3 flex items-center gap-2">
                   <Loader2 size={12} className="text-accent animate-spin" />
                   <span className="text-[11px] text-muted/60">
-                    Waiting for compile or auto‑compile…
+                    {to.waitingCompile}
                   </span>
                 </div>
               </div>

@@ -12,6 +12,7 @@ import {
   Link2Off,
   FileQuestion,
 } from "lucide-react";
+import { useT } from "@/lib/app-i18n";
 
 interface LintFinding {
   severity: "info" | "warning" | "error";
@@ -47,6 +48,8 @@ const CATEGORY_ICONS: Record<string, typeof FileText> = {
 export default function HealthPage() {
   const [report, setReport] = useState<LintReport | null>(null);
   const [loading, setLoading] = useState(false);
+  const { t } = useT();
+  const th = t.knowledge.health;
 
   async function runLint() {
     setLoading(true);
@@ -66,7 +69,7 @@ export default function HealthPage() {
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
             <Activity size={20} className="text-muted" />
-            <h1 className="text-2xl font-semibold tracking-tight">Wiki Health</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">{th.title}</h1>
           </div>
           <button
             onClick={runLint}
@@ -74,7 +77,7 @@ export default function HealthPage() {
             className="px-4 py-2 bg-accent text-background text-sm font-medium rounded-lg hover:bg-accent-hover transition-colors disabled:opacity-50 flex items-center gap-2"
           >
             {loading ? <Loader2 size={14} className="animate-spin" /> : <Activity size={14} />}
-            {loading ? "Analyzing..." : "Run Health Check"}
+            {loading ? th.analyzing : th.run}
           </button>
         </div>
 
@@ -82,7 +85,7 @@ export default function HealthPage() {
           <div className="flex items-center justify-center py-20">
             <div className="text-center text-muted">
               <Activity size={48} className="mx-auto mb-4 opacity-20" />
-              <p className="text-sm">Run a health check to analyze your wiki</p>
+              <p className="text-sm">{th.emptyPrompt}</p>
             </div>
           </div>
         )}
@@ -92,10 +95,10 @@ export default function HealthPage() {
             {/* Stats cards */}
             <div className="grid grid-cols-4 gap-3">
               {[
-                { label: "Articles", value: report.stats.totalArticles, color: "text-foreground" },
-                { label: "Orphans", value: report.stats.orphans, color: report.stats.orphans > 0 ? "text-amber-400" : "text-green-400" },
-                { label: "Broken Links", value: report.stats.missingBacklinks, color: report.stats.missingBacklinks > 0 ? "text-amber-400" : "text-green-400" },
-                { label: "Suggested", value: report.stats.suggestedArticles, color: report.stats.suggestedArticles > 0 ? "text-accent" : "text-muted" },
+                { label: th.statArticles, value: report.stats.totalArticles, color: "text-foreground" },
+                { label: th.statOrphans, value: report.stats.orphans, color: report.stats.orphans > 0 ? "text-amber-400" : "text-green-400" },
+                { label: th.statBrokenLinks, value: report.stats.missingBacklinks, color: report.stats.missingBacklinks > 0 ? "text-amber-400" : "text-green-400" },
+                { label: th.statSuggested, value: report.stats.suggestedArticles, color: report.stats.suggestedArticles > 0 ? "text-accent" : "text-muted" },
               ].map((stat) => (
                 <div key={stat.label} className="p-4 rounded-xl bg-card border border-border">
                   <p className="text-[11px] text-muted/60 uppercase tracking-wider mb-1">{stat.label}</p>
@@ -107,7 +110,7 @@ export default function HealthPage() {
             {/* Health score */}
             <div className="p-5 rounded-xl bg-card border border-border">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-sm font-medium">Health Score</p>
+                <p className="text-sm font-medium">{th.healthScore}</p>
                 <p className={`text-lg font-bold ${
                   report.findings.length === 0 ? "text-green-400" :
                   report.findings.some((f) => f.severity === "error") ? "text-red-400" :
@@ -115,12 +118,12 @@ export default function HealthPage() {
                   "text-green-400"
                 }`}>
                   {report.findings.length === 0
-                    ? "Excellent"
+                    ? th.scoreExcellent
                     : report.findings.filter((f) => f.severity === "error").length > 0
-                      ? "Needs Attention"
+                      ? th.scoreNeedsAttention
                       : report.findings.filter((f) => f.severity === "warning").length > 0
-                        ? "Good"
-                        : "Great"}
+                        ? th.scoreGood
+                        : th.scoreGreat}
                 </p>
               </div>
               <div className="h-2 rounded-full bg-border overflow-hidden">
@@ -139,7 +142,7 @@ export default function HealthPage() {
             {report.findings.length > 0 && (
               <div>
                 <h2 className="text-sm font-medium text-muted/70 uppercase tracking-wider mb-4">
-                  Findings ({report.findings.length})
+                  {th.findings(report.findings.length)}
                 </h2>
                 <div className="space-y-2">
                   {report.findings.map((finding, i) => {
@@ -173,13 +176,13 @@ export default function HealthPage() {
 
             {report.findings.length === 0 && (
               <div className="p-8 rounded-xl bg-green-500/5 border border-green-500/20 text-center">
-                <p className="text-green-400 font-medium">Your wiki is healthy!</p>
-                <p className="text-xs text-muted/50 mt-1">No issues found.</p>
+                <p className="text-green-400 font-medium">{th.healthy}</p>
+                <p className="text-xs text-muted/50 mt-1">{th.noIssues}</p>
               </div>
             )}
 
             <p className="text-[10px] text-muted/30">
-              Report generated {new Date(report.generatedAt).toLocaleString()} · Saved to wiki/outputs/health-report.md
+              {th.generatedAt(new Date(report.generatedAt).toLocaleString())}
             </p>
           </div>
         )}

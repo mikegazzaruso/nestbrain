@@ -6,6 +6,7 @@ import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { TranslateButton } from "@/components/translate-button";
 import { WikiEditModal } from "@/components/wiki-edit-modal";
 import { useCompile } from "@/lib/compile-context";
+import { useT } from "@/lib/app-i18n";
 import {
   ChevronRight,
   FileText,
@@ -26,11 +27,12 @@ interface WikiNode {
 }
 
 export default function WikiPage() {
+  const { t } = useT();
   return (
     <Suspense
       fallback={
         <div className="flex-1 flex items-center justify-center text-muted text-sm">
-          Loading...
+          {t.wiki.article.loading}
         </div>
       }
     >
@@ -40,6 +42,8 @@ export default function WikiPage() {
 }
 
 function WikiPageContent() {
+  const { t } = useT();
+  const ta = t.wiki.article;
   const searchParams = useSearchParams();
   const articlePath = searchParams.get("path");
   const { status } = useCompile();
@@ -156,22 +160,22 @@ function WikiPageContent() {
       <div className="w-60 border-r border-border flex flex-col shrink-0 bg-[#0c0c0e]">
         <div className="p-4 border-b border-border/50">
           <h2 className="text-xs font-medium text-muted/70 uppercase tracking-widest">
-            Articles
+            {ta.articles}
           </h2>
           <p className="text-[11px] text-muted/40 mt-1">
-            {totalArticles} pages
+            {ta.pages(totalArticles)}
           </p>
         </div>
 
         <div className="flex-1 overflow-auto p-3">
           {loading ? (
-            <p className="text-xs text-muted/40 p-2">Loading...</p>
+            <p className="text-xs text-muted/40 p-2">{ta.loading}</p>
           ) : tree.length === 0 ? (
             <div className="p-3 text-center">
               <p className="text-xs text-muted/50 leading-relaxed">
-                No articles yet.
+                {ta.emptyLine1}
                 <br />
-                Ingest sources and compile.
+                {ta.emptyLine2}
               </p>
             </div>
           ) : (
@@ -215,7 +219,7 @@ function WikiPageContent() {
                   className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs text-muted/60 hover:text-accent hover:bg-accent/10 transition-colors"
                 >
                   <Pencil size={12} />
-                  Edit
+                  {ta.edit}
                 </button>
                 <TranslateButton
                   content={content}
@@ -232,7 +236,7 @@ function WikiPageContent() {
                 {articlePath.startsWith("outputs/") && (
                   <button
                     onClick={async () => {
-                      if (!confirm("Delete this output?")) return;
+                      if (!confirm(ta.deleteConfirm)) return;
                       await fetch("/api/wiki/delete", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -243,7 +247,7 @@ function WikiPageContent() {
                     className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-colors"
                   >
                     <Trash2 size={12} />
-                    Delete
+                    {ta.delete}
                   </button>
                 )}
               </div>
@@ -281,10 +285,10 @@ function WikiPageContent() {
                   <FileText size={24} className="text-muted/30" />
                 </div>
                 <p className="text-sm text-muted/60 mb-1">
-                  Select an article
+                  {ta.selectArticle}
                 </p>
                 <p className="text-xs text-muted/30">
-                  Browse the tree or use search
+                  {ta.selectHint}
                 </p>
               </div>
             </div>
@@ -298,7 +302,7 @@ function WikiPageContent() {
               <div className="mb-6">
                 <h3 className="text-[10px] font-medium text-muted/50 uppercase tracking-widest mb-3 flex items-center gap-1.5">
                   <Link2 size={10} />
-                  Links to
+                  {ta.linksTo}
                 </h3>
                 <div className="space-y-1">
                   {outlinks.map((link) => (
@@ -312,7 +316,7 @@ function WikiPageContent() {
               <div>
                 <h3 className="text-[10px] font-medium text-muted/50 uppercase tracking-widest mb-3 flex items-center gap-1.5">
                   <ArrowLeft size={10} />
-                  Linked from
+                  {ta.linkedFrom}
                 </h3>
                 <div className="space-y-1">
                   {backlinks.map((link) => (

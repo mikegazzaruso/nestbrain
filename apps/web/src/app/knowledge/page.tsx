@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { useCompile } from "@/lib/compile-context";
+import { useT } from "@/lib/app-i18n";
 
 interface SourceRef {
   commit: string;
@@ -59,6 +60,8 @@ export default function KnowledgePage() {
   const [minScore, setMinScore] = useState(0);
   const [autoCompile, setAutoCompile] = useState(false);
   const { compile, status: compileStatus } = useCompile();
+  const { t } = useT();
+  const tr = t.knowledge.review;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -66,14 +69,14 @@ export default function KnowledgePage() {
     try {
       const res = await fetch("/api/knowledge/pending", { cache: "no-store" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to load pending atoms");
+      if (!res.ok) throw new Error(data.error ?? tr.loadFailed);
       setEntries(data.entries ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tr.loadFailed]);
 
   useEffect(() => {
     void load();
@@ -129,7 +132,7 @@ export default function KnowledgePage() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Save failed");
+      if (!res.ok) throw new Error(data.error ?? tr.saveFailed);
       cancelEdit();
       await load();
     } catch (err) {
@@ -148,7 +151,7 @@ export default function KnowledgePage() {
         body: JSON.stringify({ filePath: entry.filePath }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `${action} failed`);
+      if (!res.ok) throw new Error(data.error ?? tr.actionFailed(action));
       // Optimistic: drop the entry locally so the user sees the queue shrink.
       setEntries((prev) => prev.filter((e) => e.filePath !== entry.filePath));
       // Same UX as the ingest page: if the user opted in, accepted atoms
@@ -170,25 +173,22 @@ export default function KnowledgePage() {
           <div>
             <div className="flex items-center gap-3 mb-1">
               <Lightbulb size={22} className="text-accent" />
-              <h1 className="text-2xl font-semibold tracking-tight">Knowledge review</h1>
+              <h1 className="text-2xl font-semibold tracking-tight">{tr.title}</h1>
             </div>
-            <p className="text-sm text-muted">
-              Atoms proposed from your project commits. Accept what's worth keeping; reject the rest.
-              Accepted atoms compile into the global wiki on the next sync.
-            </p>
+            <p className="text-sm text-muted">{tr.description}</p>
           </div>
           <button
             onClick={load}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-muted hover:text-foreground hover:bg-card transition-colors"
-            title="Refresh"
+            title={tr.refresh}
           >
             <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-            <span>Refresh</span>
+            <span>{tr.refresh}</span>
           </button>
         </header>
 
         <div className="flex items-center gap-3 mb-6 text-sm">
-          <span className="text-muted">Min score:</span>
+          <span className="text-muted">{tr.minScore}</span>
           <input
             type="range"
             min={0}
@@ -200,9 +200,7 @@ export default function KnowledgePage() {
           />
           <span className="font-mono text-muted w-6 text-center">{minScore}</span>
           <span className="text-muted/60">·</span>
-          <span className="text-muted">
-            {visible.length} of {entries.length} pending
-          </span>
+          <span className="text-muted">{tr.pendingCount(visible.length, entries.length)}</span>
         </div>
 
         {error && (
@@ -213,15 +211,13 @@ export default function KnowledgePage() {
 
         {loading && entries.length === 0 ? (
           <div className="flex items-center justify-center py-20 text-muted">
-            <Loader2 className="animate-spin mr-2" size={18} /> Loading…
+            <Loader2 className="animate-spin mr-2" size={18} /> {tr.loading}
           </div>
         ) : visible.length === 0 ? (
           <div className="text-center py-20 text-muted">
             <Lightbulb size={32} className="mx-auto mb-3 opacity-30" />
             <p className="text-sm">
-              {entries.length === 0
-                ? "No atoms in the queue. Commit something in a registered project to see atoms appear here."
-                : "Nothing meets the current min-score filter."}
+              {entries.length === 0 ? tr.emptyQueue : tr.emptyFiltered}
             </p>
           </div>
         ) : (
@@ -242,14 +238,14 @@ export default function KnowledgePage() {
                           value={draft.title}
                           onChange={(e) => setDraft({ ...draft, title: e.target.value })}
                           className="w-full bg-transparent border-b border-card-hover focus:border-accent outline-none text-lg font-medium pb-1"
-                          placeholder="Atom title"
+                          placeholder={tr.atomTitlePlaceholder}
                         />
                       ) : (
                         <h2 className="text-lg font-medium leading-tight">{entry.atom.title}</h2>
                       )}
                       <div className="flex flex-wrap items-center gap-2 mt-2 text-[11px]">
                         <span className={`px-1.5 py-0.5 rounded border ${scoreClasses(entry.atom.score)}`}>
-                          score {entry.atom.score}
+                          {tr.scoreBadge(entry.atom.score)}
                         </span>
                         <span className="px-1.5 py-0.5 rounded bg-muted/10 text-muted border border-muted/20">
                           {entry.atom.project}
@@ -271,13 +267,13 @@ export default function KnowledgePage() {
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-accent/10 text-accent hover:bg-accent/20 transition-colors text-sm disabled:opacity-40"
                           >
                             <Save size={14} />
-                            Save
+                            {tr.save}
                           </button>
                           <button
                             onClick={cancelEdit}
                             disabled={busy}
                             className="p-1.5 rounded-md text-muted hover:text-foreground hover:bg-card-hover transition-colors disabled:opacity-40"
-                            title="Cancel"
+                            title={tr.cancel}
                           >
                             <X size={16} />
                           </button>
@@ -288,16 +284,16 @@ export default function KnowledgePage() {
                             onClick={() => act(entry, "accept")}
                             disabled={busy}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 transition-colors text-sm disabled:opacity-40"
-                            title="Accept (lands in raw/projects/<name>/)"
+                            title={tr.acceptTitle}
                           >
                             {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                            Accept
+                            {tr.accept}
                           </button>
                           <button
                             onClick={() => startEdit(entry)}
                             disabled={busy}
                             className="p-1.5 rounded-md text-muted hover:text-foreground hover:bg-card-hover transition-colors disabled:opacity-40"
-                            title="Edit before accepting"
+                            title={tr.editTitle}
                           >
                             <Edit2 size={16} />
                           </button>
@@ -305,7 +301,7 @@ export default function KnowledgePage() {
                             onClick={() => act(entry, "reject")}
                             disabled={busy}
                             className="p-1.5 rounded-md text-muted hover:text-red-300 hover:bg-red-500/10 transition-colors disabled:opacity-40"
-                            title="Reject (kept in knowledge-rejected/)"
+                            title={tr.rejectTitle}
                           >
                             <Trash2 size={16} />
                           </button>
@@ -319,7 +315,7 @@ export default function KnowledgePage() {
                       <div className="space-y-3">
                         <div>
                           <label className="block text-[11px] uppercase tracking-wide text-muted mb-1">
-                            Body
+                            {tr.bodyLabel}
                           </label>
                           <textarea
                             value={draft.body}
@@ -331,7 +327,7 @@ export default function KnowledgePage() {
                         <div className="flex gap-3">
                           <div className="flex-1">
                             <label className="block text-[11px] uppercase tracking-wide text-muted mb-1">
-                              Tags (comma-separated)
+                              {tr.tagsLabel}
                             </label>
                             <input
                               type="text"
@@ -342,7 +338,7 @@ export default function KnowledgePage() {
                           </div>
                           <div className="w-24">
                             <label className="block text-[11px] uppercase tracking-wide text-muted mb-1">
-                              Score
+                              {tr.scoreLabel}
                             </label>
                             <input
                               type="number"
