@@ -1,4 +1,6 @@
-import { spawn } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import type { AgentOptions, LLMProviderInterface, LLMResponse } from "./provider";
 
@@ -45,12 +47,57 @@ function parseJsonReply<T>(text: string): T {
   throw new Error(`No parseable JSON in model reply: ${t.slice(0, 200)}…`);
 }
 
+// On Windows, `spawn("claude")` can't execute the npm shim (claude.cmd /
+// claude.ps1): Node refuses .cmd files without a shell, and a shell would
+// wreck arg quoting (--system-prompt carries free text). Resolve the real
+// target once: a native claude.exe spawns directly; an npm shim is bypassed
+// by running its cli.js under our own runtime (ELECTRON_RUN_AS_NODE inside
+// the packaged app, plain node otherwise).
+interface ClaudeCmd {
+  file: string;
+  argsPrefix: string[];
+  env?: NodeJS.ProcessEnv;
+}
+let resolvedClaude: ClaudeCmd | null = null;
+
+function resolveClaude(): ClaudeCmd {
+  if (resolvedClaude) return resolvedClaude;
+  if (process.platform !== "win32") {
+    return (resolvedClaude = { file: "claude", argsPrefix: [] });
+  }
+  let candidates: string[] = [];
+  try {
+    candidates = execSync("where claude", { encoding: "utf-8", windowsHide: true })
+      .split(/\r?\n/)
+      .map((c) => c.trim())
+      .filter(Boolean);
+  } catch {
+    /* nothing on PATH — fall through to the last resort */
+  }
+  const exe = candidates.find((c) => c.toLowerCase().endsWith(".exe"));
+  if (exe) return (resolvedClaude = { file: exe, argsPrefix: [] });
+  const shim = candidates.find((c) => /\.(cmd|bat|ps1)$/i.test(c)) ?? candidates[0];
+  if (shim) {
+    const cliJs = join(dirname(shim), "node_modules", "@anthropic-ai", "claude-code", "cli.js");
+    if (existsSync(cliJs)) {
+      return (resolvedClaude = {
+        file: process.execPath,
+        argsPrefix: [cliJs],
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+      });
+    }
+  }
+  return (resolvedClaude = { file: "claude", argsPrefix: [] });
+}
+
 function runClaude(args: string[], stdin?: string, cwd?: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const proc = spawn("claude", args, {
+    const claude = resolveClaude();
+    const proc = spawn(claude.file, [...claude.argsPrefix, ...args], {
       cwd: cwd ?? tmpdir(),
       stdio: ["pipe", "pipe", "pipe"],
       timeout: 600_000,
+      ...(claude.env ? { env: claude.env } : {}),
     });
 
     let stdout = "";
@@ -74,13 +121,14 @@ function runClaude(args: string[], stdin?: string, cwd?: string): Promise<string
 
     proc.on("error", (err: NodeJS.ErrnoException) => {
       if (err.code === "ENOENT") {
+        resolvedClaude = null; // re-resolve next time — claude may get installed mid-session
         reject(
           new Error(
             'Claude CLI is not installed or not in your PATH.\n\n' +
             'To fix this:\n' +
             '  1. Install Claude Code: npm install -g @anthropic-ai/claude-code\n' +
             '  2. Authenticate: claude auth login\n' +
-            '  3. Restart NestBrain\n\n' +
+            '  3. Restart NestBrain (on Windows, a fresh install only lands on the PATH of NEW processes)\n\n' +
             'Alternatively, switch to the OpenAI provider in Settings.',
           ),
         );
