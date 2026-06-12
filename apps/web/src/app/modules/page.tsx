@@ -122,6 +122,7 @@ interface CompanyContext {
   employees: string;
   notes: string;
   autoAssess: boolean;
+  addToWiki: boolean;
 }
 
 const EMPTY_CTX: CompanyContext = {
@@ -131,6 +132,7 @@ const EMPTY_CTX: CompanyContext = {
   employees: "",
   notes: "",
   autoAssess: false,
+  addToWiki: true,
 };
 
 const inputCls =
@@ -220,6 +222,19 @@ function AnatomizeModuleSettings() {
         placeholder={tc.notesPh}
         onChange={(e) => setCtx({ ...ctx, notes: e.target.value })}
       />
+
+      <div className="flex items-start justify-between gap-4 mt-4">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium">{tc.addToWiki}</p>
+          <p className="text-[11px] text-muted/60 leading-relaxed mt-0.5">{tc.addToWikiDesc}</p>
+        </div>
+        <button
+          onClick={() => setCtx({ ...ctx, addToWiki: !ctx.addToWiki })}
+          className={`relative w-10 h-[22px] rounded-full transition-colors shrink-0 ${ctx.addToWiki ? "bg-accent" : "bg-border"}`}
+        >
+          <span className={`absolute top-[3px] h-4 w-4 rounded-full bg-white transition-transform ${ctx.addToWiki ? "left-[22px]" : "left-[3px]"}`} />
+        </button>
+      </div>
 
       <div className="flex items-start justify-between gap-4 mt-4">
         <div className="flex-1 min-w-0">

@@ -55,6 +55,37 @@ function WikiPageContent() {
   const [meta, setMeta] = useState<Record<string, string> | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [delState, setDelState] = useState<{
+    path: string;
+    refs: { path: string; title: string }[];
+    cascade: boolean;
+    busy: boolean;
+  } | null>(null);
+
+  async function openDelete(path: string) {
+    try {
+      const r = await fetch("/api/wiki/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path, dryRun: true }),
+      });
+      const d = (await r.json()) as { references?: { path: string; title: string }[] };
+      setDelState({ path, refs: d.references ?? [], cascade: false, busy: false });
+    } catch {
+      setDelState({ path, refs: [], cascade: false, busy: false });
+    }
+  }
+
+  async function doDelete() {
+    if (!delState) return;
+    setDelState({ ...delState, busy: true });
+    await fetch("/api/wiki/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: delState.path, cascade: delState.cascade }),
+    }).catch(() => {});
+    window.location.href = "/wiki";
+  }
 
   useEffect(() => {
     loadTree();
@@ -233,27 +264,66 @@ function WikiPageContent() {
                   }}
                   isTranslated={isTranslated}
                 />
-                {articlePath.startsWith("outputs/") && (
-                  <button
-                    onClick={async () => {
-                      if (!confirm(ta.deleteConfirm)) return;
-                      await fetch("/api/wiki/delete", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ path: articlePath }),
-                      });
-                      window.location.href = "/wiki";
-                    }}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                  >
-                    <Trash2 size={12} />
-                    {ta.delete}
-                  </button>
-                )}
+                <button
+                  onClick={() => void openDelete(articlePath)}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                >
+                  <Trash2 size={12} />
+                  {ta.delete}
+                </button>
               </div>
               </div>
 
               <MarkdownRenderer content={content} meta={meta ?? undefined} />
+
+              {delState && (
+                <div
+                  className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+                  onClick={(e) => { if (e.target === e.currentTarget && !delState.busy) setDelState(null); }}
+                >
+                  <div className="w-[min(440px,calc(100vw-32px))] bg-card border border-border rounded-2xl p-6 animate-pop-in">
+                    <h3 className="font-semibold mb-1.5">{ta.deleteTitle}</h3>
+                    <p className="text-xs text-muted leading-relaxed mb-4">{ta.deleteBody}</p>
+                    {delState.refs.length > 0 ? (
+                      <div className="mb-4">
+                        <p className="text-xs font-medium text-amber-400 mb-2">{ta.deleteRefs(delState.refs.length)}</p>
+                        <div className="max-h-28 overflow-auto rounded-lg border border-border bg-background px-3 py-2 mb-3">
+                          {delState.refs.map((r) => (
+                            <p key={r.path} className="text-[11px] text-muted truncate">{r.title}</p>
+                          ))}
+                        </div>
+                        <label className="flex items-start gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={delState.cascade}
+                            onChange={(e) => setDelState({ ...delState, cascade: e.target.checked })}
+                            className="mt-0.5 accent-red-500"
+                          />
+                          <span className="text-xs text-muted leading-snug">{ta.deleteCascade}</span>
+                        </label>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted/60 mb-4">{ta.deleteNoRefs}</p>
+                    )}
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => setDelState(null)}
+                        disabled={delState.busy}
+                        className="px-4 py-2 rounded-lg text-xs text-muted hover:text-foreground hover:bg-card-hover transition-colors"
+                      >
+                        {t.common.actions.cancel}
+                      </button>
+                      <button
+                        onClick={() => void doDelete()}
+                        disabled={delState.busy}
+                        className="px-4 py-2 rounded-lg text-xs font-semibold bg-red-500/15 text-red-400 border border-red-500/40 hover:bg-red-500/25 disabled:opacity-60 transition-colors"
+                      >
+                        {delState.busy ? ta.deleteBusy : ta.deleteGo}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <WikiEditModal
                 isOpen={editing}
