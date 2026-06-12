@@ -39,7 +39,7 @@ nestbrain/
 ├── nestbrain.yaml              # Default workspace config (provider, embeddings, search, server)
 ├── pnpm-workspace.yaml
 ├── turbo.json
-└── package.json                # version: 1.12.4
+└── package.json                # version: 1.13.0
 ```
 
 ## Tech Stack
