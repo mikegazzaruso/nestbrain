@@ -1084,6 +1084,9 @@ ipcMain.handle("nestbrain:modules:get", async (): Promise<string[]> => {
       try { mkdirSync(join(b.nestBrainPath, "Projects"), { recursive: true }); } catch { /* ignore */ }
     }
   }
+  if (mods.includes("anatomize")) {
+    void teamManager?.syncAnatomizeProfiles();
+  }
   return mods;
 });
 ipcMain.handle("nestbrain:team:connect", async (_e, serverUrl: string, email: string, password: string) => {

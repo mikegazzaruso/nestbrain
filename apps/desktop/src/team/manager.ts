@@ -235,6 +235,30 @@ export class TeamManager {
     this.orgLicenseAt = Date.now();
     return this.orgLicense;
   }
+  // Anatomize profiles — fetched from the Team Server (module-gated there)
+  // and cached on disk for the embedded Next server's assessment engine.
+  // TTL'd like the org license so profile updates reach running apps.
+  private profilesAt = 0;
+  async syncAnatomizeProfiles(): Promise<void> {
+    if (this.state.status !== "connected" || !this.backend) return;
+    if (Date.now() - this.profilesAt < 10 * 60 * 1000) return;
+    this.profilesAt = Date.now();
+    const root = this.opts.getWorkspacePath();
+    if (!root) return;
+    try {
+      const profiles = await this.backend.getAnatomizeProfiles();
+      if (profiles.length > 0) {
+        const dir = join(root, ".nestbrain", "anatomize");
+        await mkdir(dir, { recursive: true });
+        await import("node:fs/promises").then((fs) =>
+          fs.writeFile(join(dir, "profiles.json"), JSON.stringify({ fetchedAt: Date.now(), profiles }, null, 2), "utf-8"),
+        );
+      }
+    } catch {
+      /* server may predate the module or license may lack it — engine reports it */
+    }
+  }
+
   addMember(m: { email: string; name: string; password: string; role: string }): Promise<unknown> {
     return this.require().addMember(m);
   }

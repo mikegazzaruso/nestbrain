@@ -115,4 +115,8 @@ export class TeamBackend implements SyncBackend {
   getOrgLicense(): Promise<string | null> {
     return this.json("/license").then((d) => (d as { license?: string | null }).license ?? null);
   }
+  /** Anatomize assessment profiles (module-gated server side). */
+  getAnatomizeProfiles(): Promise<unknown[]> {
+    return this.json("/anatomize/profiles").then((d) => (d as { profiles?: unknown[] }).profiles ?? []);
+  }
 }

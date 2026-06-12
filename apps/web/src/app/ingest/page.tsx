@@ -40,7 +40,7 @@ interface DuplicateInfo {
 export default function IngestPage() {
   const { has: hasModule } = useModules();
   const anatomize = hasModule("anatomize");
-  const { t } = useT();
+  const { t, lang } = useT();
   const [source, setSource] = useState("");
   const [entries, setEntries] = useState<IngestEntry[]>([]);
   const [ingesting, setIngesting] = useState(false);
@@ -177,6 +177,7 @@ export default function IngestPage() {
         const biz = anatomize && /\.(xlsx|xlsm|csv|docx)$/i.test(file.name);
         const res = await fetch(biz ? "/api/anatomize/upload" : "/api/ingest/upload", {
           method: "POST",
+          headers: biz ? { "x-nestbrain-lang": lang } : undefined,
           body: formData,
         });
         return res.json();
