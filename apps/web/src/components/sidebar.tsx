@@ -81,8 +81,14 @@ export function Sidebar() {
       const projectPath = `${nestBrainPath}/Projects/${projectName}`;
       await window.nestbrain.fs.createDir(projectPath);
       // Make it knowledge-ready (git init + post-commit hook) so commits feed
-      // the knowledge base from the start. Best-effort — don't block opening.
-      try { await window.nestbrain.projects.makeReady(projectPath); } catch { /* ignore */ }
+      // the knowledge base from the start. A failed git init is surfaced (a
+      // project without a repo is broken); a failed hook install only warns.
+      try {
+        const r = (await window.nestbrain.projects.makeReady(projectPath)) as { warning?: string };
+        if (r?.warning) console.warn("[projects]", r.warning);
+      } catch (e) {
+        window.alert(e instanceof Error ? e.message : "Project created, but git init failed.");
+      }
       await openTerminal(projectPath, projectName);
       // Trigger file tree refresh via focus event
       window.dispatchEvent(new Event("focus"));

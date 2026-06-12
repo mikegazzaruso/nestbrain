@@ -14,6 +14,7 @@ import { EditorTabsProvider } from "@/lib/editor-tabs-context";
 import { OnboardingGate } from "@/lib/onboarding-gate";
 import { ModulesProvider } from "@/lib/modules-context";
 import { UpdateToast } from "@/components/update-toast";
+import { TeamWelcome } from "@/components/team-welcome";
 import "./globals.css";
 
 const inter = Inter({
@@ -62,6 +63,7 @@ export default function RootLayout({
                       <StatusBar />
                     </div>
                     <UpdateToast />
+                    <TeamWelcome />
                   </OnboardingGate>
                  </EditorTabsProvider>
                 </GitStatusProvider>

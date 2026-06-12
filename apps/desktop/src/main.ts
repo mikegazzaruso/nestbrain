@@ -96,6 +96,23 @@ if (process.platform === "darwin") {
 }
 
 let mainWindow: BrowserWindow | null = null;
+
+// Hard single-instance guarantee: whatever launches the binary again (CLI
+// wrappers, git hooks, OS file associations, a double-click), the second
+// process exits immediately and the existing window comes to front. NestBrain
+// must never run twice against the same workspace.
+const gotInstanceLock = app.requestSingleInstanceLock();
+if (!gotInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+}
 let nextServer: UtilityProcess | null = null;
 let serverUrl: string | null = null;
 let currentPort: number | null = null;
@@ -223,6 +240,9 @@ async function startNextServer(reusePort = false): Promise<string> {
       HOSTNAME: "127.0.0.1",
       NESTBRAIN_DATA_DIR: dataDir,
       ...(wikiDir ? { NESTBRAIN_WIKI_DIR: wikiDir } : {}),
+      // Writable, update-surviving cache for the local embedding model
+      // (downloaded from huggingface.co on first use).
+      NESTBRAIN_HF_CACHE: join(app.getPath("userData"), "hf-cache"),
       NODE_ENV: "production",
     },
     stdio: "pipe",

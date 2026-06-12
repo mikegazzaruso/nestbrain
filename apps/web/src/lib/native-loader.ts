@@ -21,10 +21,22 @@ const nodeRequire = createRequire(import.meta.url);
 // Build loader functions via `new Function` so Turbopack can't statically
 // detect the require targets. The bodies are plain strings to the analyzer.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const loadTransformers: () => any = new Function(
+const loadTransformersRaw: () => any = new Function(
   "req",
   "return function(){return req('@hug' + 'gingface/transformers');}",
 )(nodeRequire);
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const loadTransformers: () => any = () => {
+  const t = loadTransformersRaw();
+  // Persist the model cache in the app's userData (NESTBRAIN_HF_CACHE, set by
+  // the Electron main). The library default writes inside node_modules — in a
+  // packaged install that's the app bundle: not reliably writable (Windows)
+  // and wiped on every update, forcing a re-download from huggingface.co.
+  const cacheDir = process.env.NESTBRAIN_HF_CACHE;
+  if (cacheDir && t?.env) t.env.cacheDir = cacheDir;
+  return t;
+};
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const loadPdfParse: () => any = new Function(
