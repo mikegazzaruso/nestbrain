@@ -844,7 +844,9 @@ function TreeNode({
     return () => {
       cancelled = true;
     };
-  }, [isDir, path, registerRepo]);
+    // refreshKey: a fresh git init (new project) must light the repo icon on
+    // the next tree refresh without remounting the node.
+  }, [isDir, path, registerRepo, refreshKey]);
 
   // Resolve the ancestor repo for marker computation. We pick the LONGEST
   // matching prefix so nested checkouts (a sub-repo inside a project) win
