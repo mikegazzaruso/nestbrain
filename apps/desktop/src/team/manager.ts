@@ -129,6 +129,7 @@ export class TeamManager {
       const { token, user } = await teamLogin(url, email, password);
       await saveToken(token);
       this.backend = new TeamBackend(url, token);
+      this.resetOrgLicenseCache();
       // Team/ is a Team-Server concept — scaffolded here on first connect,
       // not at workspace creation (source/$29 installs never get it).
       const root = this.opts.getWorkspacePath();
@@ -201,6 +202,7 @@ export class TeamManager {
 
   async disconnect(): Promise<void> {
     this.stopAutoSync();
+    this.resetOrgLicenseCache();
     await clearToken();
     await saveConfig({}); // forget server + selected workspace + bases
     this.backend = null;
@@ -229,11 +231,22 @@ export class TeamManager {
     }
     try {
       this.orgLicense = await this.backend.getOrgLicense();
+      this.orgLicenseAt = Date.now();
     } catch {
-      if (this.orgLicense === undefined) this.orgLicense = null;
+      // Transient failure (e.g. the Team Server restarting through its own
+      // one-click update): keep whatever we had and retry in 30s — caching
+      // the failure for the full TTL blanked every module for 10 minutes.
+      this.orgLicenseAt = Date.now() - 10 * 60 * 1000 + 30 * 1000;
+      if (this.orgLicense === undefined) return null;
     }
-    this.orgLicenseAt = Date.now();
     return this.orgLicense;
+  }
+
+  /** Fresh identity ⇒ fresh license cache. */
+  private resetOrgLicenseCache(): void {
+    this.orgLicense = undefined;
+    this.orgLicenseAt = 0;
+    this.profilesAt = 0;
   }
   // Anatomize profiles — fetched from the Team Server (module-gated there)
   // and cached on disk for the embedded Next server's assessment engine.
