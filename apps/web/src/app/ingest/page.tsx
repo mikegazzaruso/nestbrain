@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useCompile } from "@/lib/compile-context";
 import { useT } from "@/lib/app-i18n";
+import { useModules } from "@/lib/modules-context";
 
 interface IngestEntry {
   source: string;
@@ -37,6 +38,8 @@ interface DuplicateInfo {
 }
 
 export default function IngestPage() {
+  const { has: hasModule } = useModules();
+  const anatomize = hasModule("anatomize");
   const { t } = useT();
   const [source, setSource] = useState("");
   const [entries, setEntries] = useState<IngestEntry[]>([]);
@@ -168,7 +171,11 @@ export default function IngestPage() {
         const formData = new FormData();
         formData.append("file", file);
         if (skipDup) formData.append("skipDuplicateCheck", "true");
-        const res = await fetch("/api/ingest/upload", {
+        // Business documents go through the Anatomize extractor (module-only
+        // route): structured tables for the assessment engine + a Markdown
+        // digest into the normal compile pipeline.
+        const biz = anatomize && /\.(xlsx|xlsm|csv|docx)$/i.test(file.name);
+        const res = await fetch(biz ? "/api/anatomize/upload" : "/api/ingest/upload", {
           method: "POST",
           body: formData,
         });
@@ -250,7 +257,7 @@ export default function IngestPage() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".md,.markdown,.pdf,.txt"
+            accept={anatomize ? ".md,.markdown,.pdf,.txt,.xlsx,.xlsm,.csv,.docx" : ".md,.markdown,.pdf,.txt"}
             multiple
             onChange={(e) => handleFiles(e.target.files)}
             className="hidden"

@@ -14,6 +14,9 @@
 
 import { builtInModules } from "./dev-module";
 
+/** Hard cap on simultaneously-loaded modules per client. */
+export const MAX_ACTIVE_MODULES = 5;
+
 /** Decode `module:*` features from a signed license token (payload.features). */
 export function modulesFromLicense(token: string | null): string[] {
   if (!token) return [];
@@ -26,7 +29,13 @@ export function modulesFromLicense(token: string | null): string[] {
     };
     if (typeof payload.exp === "number" && Date.now() / 1000 > payload.exp) return [];
     const feats = Array.isArray(payload.features) ? (payload.features as string[]) : [];
-    return builtInModules().filter((m) => feats.includes(`module:${m}`));
+    // Active = built into this binary ∩ licensed ∩ (future) the user's local
+    // selection from Settings. An org may own any number of modules, but at
+    // most MAX_ACTIVE_MODULES load simultaneously on a client; until the
+    // selection UI ships, the first N licensed modules win.
+    return builtInModules()
+      .filter((m) => feats.includes(`module:${m}`))
+      .slice(0, MAX_ACTIVE_MODULES);
   } catch {
     return [];
   }

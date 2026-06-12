@@ -12,8 +12,8 @@
   },
   "dependencies": {
     "@huggingface/transformers": "^4.0.1",
-    "@nestbrain/shared": "workspace:*",
     "@mozilla/readability": "^0.6.0",
+    "@nestbrain/shared": "workspace:*",
     "crypto-js": "^4.2.0",
     "linkedom": "^0.18.12",
     "pdf-parse": "^2.4.5",
@@ -26,7 +26,6 @@
   "devDependencies": {
     "@types/crypto-js": "^4.2.2",
     "@types/pdf-parse": "^1.1.5",
-    "@types/turndown": "^5.0.6",
-    "@types/uuid": "^11.0.0"
+    "@types/turndown": "^5.0.6"
   }
 }

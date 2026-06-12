@@ -15,6 +15,7 @@ import {
   Sun,
   Moon,
   Blocks,
+  Sparkles,
 } from "lucide-react";
 import { CompileIndicator } from "./compile-indicator";
 import { FileTree } from "./file-tree";
@@ -213,6 +214,7 @@ export function Sidebar() {
         <nav className="flex-1 p-3 space-y-0.5 overflow-auto">
           {[
             ...navItems.slice(0, -1),
+            ...(modules.includes("anatomize") ? [{ href: "/insights", icon: Sparkles, key: "insights" as const }] : []),
             ...(modules.length > 0 ? [{ href: "/modules", icon: Blocks, key: "modules" as const }] : []),
             navItems[navItems.length - 1],
           ].map((item) => {

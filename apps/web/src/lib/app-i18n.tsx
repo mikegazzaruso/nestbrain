@@ -9,6 +9,7 @@ import { wiki } from "./i18n/wiki";
 import { team } from "./i18n/team";
 import { tree } from "./i18n/tree";
 import { dev } from "./i18n/dev";
+import { anatomize } from "./i18n/anatomize";
 
 // App-wide localization (EN/IT/FR/ES). Resolution order: the language chosen
 // in Settings (localStorage) wins; otherwise the OS/browser language;
@@ -34,6 +35,7 @@ function buildDict(lang: AppLang) {
     team: team[lang],
     tree: tree[lang],
     dev: dev[lang],
+    anatomize: anatomize[lang],
   };
 }
 
