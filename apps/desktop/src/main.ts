@@ -1467,7 +1467,19 @@ app.whenReady().then(async () => {
         ) => void;
         recheckUpdates: () => void;
       };
-      initUpdater(() => mainWindow, disposeWatchersForQuit, getUpdateCredentials);
+      initUpdater(
+        () => mainWindow,
+        async () => {
+          // Everything that could hold the install hostage dies BEFORE
+          // quitAndInstall: drive watchers (deferred-quit dance), pty shells
+          // (conhost children) and the Next utilityProcess (a second
+          // NestBrain.exe that blocks the NSIS file replacement on Windows).
+          await disposeWatchersForQuit();
+          devModule?.killAllPtySessions();
+          await killNextServer();
+        },
+        getUpdateCredentials,
+      );
       updaterRecheck = recheckUpdates;
     } catch (e) {
       console.warn("[updates] updater bundle unavailable:", e instanceof Error ? e.message : e);
@@ -1515,6 +1527,29 @@ app.on("before-quit", () => {
   armQuitFailsafe();
 });
 
+// Force-exit that takes the WHOLE TREE down. On Windows a plain SIGKILL
+// (TerminateProcess) leaves children alive — and our Next server is a
+// utilityProcess, i.e. a second NestBrain.exe: orphaned, it blocks the NSIS
+// updater with "NestBrain non può essere chiuso" until killed manually.
+// taskkill /T terminates the tree (utility process, pty conhosts and all).
+function forceExitNow(): void {
+  if (process.platform === "win32") {
+    try {
+      spawn("taskkill", ["/F", "/T", "/PID", String(process.pid)], {
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+      }).unref();
+    } catch {
+      /* fall through to SIGKILL */
+    }
+    // If taskkill itself fails to land, SIGKILL at least kills the main.
+    setTimeout(() => process.kill(process.pid, "SIGKILL"), 1500);
+    return;
+  }
+  process.kill(process.pid, "SIGKILL");
+}
+
 // Belt-and-braces: once a quit is underway, the process MUST die. If any
 // native handle (pty, fsevents, utility process) still wedges the event loop,
 // force the exit. quitAndInstall spawns its installer before this can fire.
@@ -1523,13 +1558,11 @@ function armQuitFailsafe(): void {
   if (quitFailsafeArmed) return;
   quitFailsafeArmed = true;
   setTimeout(() => {
-    // SIGKILL ourselves rather than app.exit(): a graceful-ish exit still runs
-    // native teardown, and a wedged fsevents handle abort()s there — the user
-    // sees a crash report for what was just a quit. SIGKILL skips all teardown:
-    // instant, silent, no crash dialog. Only reachable when the normal quit
-    // already failed to finish within 4s.
-    console.warn("[quit] event loop still alive 2.5s after quit — SIGKILL");
-    process.kill(process.pid, "SIGKILL");
+    // Skip all native teardown (a wedged fsevents handle abort()s there and
+    // the user sees a crash report for what was just a quit) — but take the
+    // children along: see forceExitNow.
+    console.warn("[quit] event loop still alive 2.5s after quit — force exit");
+    forceExitNow();
   }, 2500);
 }
 

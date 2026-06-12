@@ -146,7 +146,27 @@ export function initUpdater(
       // the time it asks the app to quit. If a wedged native handle keeps the
       // quit from completing, exit via SIGKILL: no teardown → no fsevents
       // abort → no crash report — and the install still applies.
-      setTimeout(() => process.kill(process.pid, "SIGKILL"), 2500);
+      setTimeout(() => {
+        // Windows: SIGKILL leaves children (the Next utilityProcess is a
+        // second NestBrain.exe) alive and they block the NSIS installer —
+        // take the whole tree down.
+        if (process.platform === "win32") {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const { spawn } = require("node:child_process") as typeof import("node:child_process");
+            spawn("taskkill", ["/F", "/T", "/PID", String(process.pid)], {
+              detached: true,
+              stdio: "ignore",
+              windowsHide: true,
+            }).unref();
+            setTimeout(() => process.kill(process.pid, "SIGKILL"), 1500);
+            return;
+          } catch {
+            /* fall through */
+          }
+        }
+        process.kill(process.pid, "SIGKILL");
+      }, 2500);
     });
   });
 
