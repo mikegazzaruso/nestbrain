@@ -128,6 +128,8 @@ declare global {
       modules: {
         get: () => Promise<string[]>;
       };
+      openExternal: (url: string) => Promise<void>;
+      onShowAbout: (callback: () => void) => () => void;
       terminal: {
         create: (opts: { cwd: string; cols?: number; rows?: number }) => Promise<CreateTerminalResult>;
         write: (id: string, data: string) => void;

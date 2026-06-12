@@ -191,7 +191,6 @@ export function Sidebar() {
               <h1 className="text-lg font-semibold tracking-tight">
                 <span className="text-accent">Nest</span>Brain
               </h1>
-              <span className="text-[10px] text-muted/40 italic">by NextEpochs</span>
             </div>
             <p className="text-[11px] text-muted/60 mt-0.5">v{process.env.NEXT_PUBLIC_APP_VERSION}</p>
           </Link>

@@ -475,7 +475,15 @@ function setupMenu(): void {
     {
       label: app.name,
       submenu: [
-        { role: "about" },
+        {
+          label: "About NestBrain",
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.show();
+              mainWindow.webContents.send("nestbrain:show-about");
+            }
+          },
+        },
         { type: "separator" },
         { role: "services" },
         { type: "separator" },
@@ -494,6 +502,10 @@ function setupMenu(): void {
 }
 
 // === IPC handlers ===
+ipcMain.handle("nestbrain:openExternal", (_e, url: string) => {
+  if (typeof url === "string" && /^https?:\/\//.test(url)) void shell.openExternal(url);
+});
+
 ipcMain.handle("nestbrain:getBootstrap", () => {
   return {
     ...readBootstrap(),
@@ -1207,10 +1219,30 @@ ipcMain.handle("nestbrain:cli:install", async () => {
     throw new Error("CLI install not supported on this platform.");
   }
   if (process.platform === "darwin") {
-    // Symlink in /usr/local/bin requires sudo. Use osascript to surface the
-    // native admin password prompt — matches the macOS UX users expect.
+    // A small launcher SCRIPT, not a symlink: a symlink hard-binds to the
+    // wrapper path of the build that installed it (a dev tree that later gets
+    // cleaned, an app that gets moved) and dies with it. The launcher tries
+    // the installing build first, then the standard app locations — so it
+    // keeps working across updates, dev/packaged switches and app moves.
+    const launcher = [
+      "#!/bin/sh",
+      "# NestBrain CLI launcher (managed by NestBrain — Settings → Command line)",
+      "for w in \\",
+      `  "${status.source}" \\`,
+      '  "/Applications/NestBrain.app/Contents/Resources/cli/nestbrain" \\',
+      '  "$HOME/Applications/NestBrain.app/Contents/Resources/cli/nestbrain"',
+      "do",
+      '  [ -x "$w" ] && exec "$w" "$@"',
+      "done",
+      'echo "nestbrain: NestBrain.app not found. Re-install the CLI from NestBrain → Settings → Command line." >&2',
+      "exit 127",
+      "",
+    ].join("\n");
+    const tmpLauncher = join(app.getPath("temp"), "nestbrain-cli-launcher");
+    writeFileSync(tmpLauncher, launcher, { mode: 0o755 });
+    // /usr/local/bin needs sudo. osascript surfaces the native admin prompt.
     const escape = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-    const cmd = `mkdir -p "$(dirname "${escape(status.target)}")" && ln -sf "${escape(status.source)}" "${escape(status.target)}"`;
+    const cmd = `mkdir -p "$(dirname "${escape(status.target)}")" && install -m 0755 "${escape(tmpLauncher)}" "${escape(status.target)}"`;
     const apple = `do shell script "${escape(cmd)}" with administrator privileges`;
     await new Promise<void>((resolve, reject) => {
       const proc = spawn("osascript", ["-e", apple]);
@@ -1225,11 +1257,24 @@ ipcMain.handle("nestbrain:cli:install", async () => {
     return getCliStatus();
   }
   if (process.platform === "win32") {
-    // User-scoped install — copy the .bat into %LOCALAPPDATA%/NestBrain/cli
-    // and append that dir to the user PATH. No admin prompt.
+    // User-scoped install into %LOCALAPPDATA%/NestBrain/cli + user PATH.
+    // Generate a launcher that CALLS the wrapper inside the install dir by
+    // absolute path — copying the .bat broke it: its %~dp0-relative bundle
+    // lookup resolved against the copy's location, where nothing exists.
     const targetDir = dirname(status.target);
     if (!existsSync(targetDir)) mkdirSync(targetDir, { recursive: true });
-    cpSync(status.source, status.target);
+    const launcher = [
+      "@echo off",
+      "REM NestBrain CLI launcher (managed by NestBrain - Settings > Command line)",
+      `if exist "${status.source}" (`,
+      `  call "${status.source}" %*`,
+      "  exit /b %errorlevel%",
+      ")",
+      "echo nestbrain: NestBrain installation not found. Re-install the CLI from Settings ^> Command line. 1>&2",
+      "exit /b 127",
+      "",
+    ].join("\r\n");
+    writeFileSync(status.target, launcher, "utf-8");
     // Append to user PATH if missing.
     try {
       const userPath = execSync('powershell -NoProfile -Command "[Environment]::GetEnvironmentVariable(\'Path\',\'User\')"', { encoding: "utf-8" }).trim();
@@ -1335,12 +1380,8 @@ app.whenReady().then(async () => {
   app.setAboutPanelOptions({
     applicationName: "NestBrain",
     applicationVersion: app.getVersion(),
-    version: app.getVersion(),
-    copyright: "Copyright © 2026 NextEpochs. All rights reserved.",
-    credits:
-      "Created by Mike Gazzaruso (NextEpochs) in 2026.\n\nLLM‑powered personal knowledge base with an integrated workspace.",
-    authors: ["Mike Gazzaruso"],
-    website: "https://github.com/mikegazzaruso/NestBrain",
+    copyright: "© 2026 NextEpochs",
+    credits: "Your AI-powered second brain.",
     ...(existsSync(aboutIconPath) ? { iconPath: aboutIconPath } : {}),
   });
 
