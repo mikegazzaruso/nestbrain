@@ -16,6 +16,7 @@ import {
   Moon,
   Blocks,
   Sparkles,
+  Boxes,
 } from "lucide-react";
 import { CompileIndicator } from "./compile-indicator";
 import { FileTree } from "./file-tree";
@@ -41,6 +42,14 @@ const MIN_WIDTH = 200;
 const MAX_WIDTH = 400;
 const DEFAULT_WIDTH = 256;
 const STORAGE_KEY = "nestbrain-sidebar-width";
+
+/** Human label for a module id with no i18n entry: "dev-besidetech" → "Dev · Besidetech". */
+function prettyModule(id: string): string {
+  return id
+    .split("-")
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+    .join(" · ");
+}
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -215,6 +224,13 @@ export function Sidebar() {
           {[
             ...navItems.slice(0, -1),
             ...(modules.includes("anatomize") ? [{ href: "/insights", icon: Sparkles, key: "insights" as const }] : []),
+            // Generic entry for any active module without a dedicated surface
+            // (dev integrates into the existing UI; anatomize → Insights). A
+            // third-party module's page lives at /<id> — this makes it
+            // reachable without editing the sidebar.
+            ...modules
+              .filter((m) => m !== "dev" && m !== "anatomize")
+              .map((m) => ({ href: `/${m}`, icon: Boxes, label: prettyModule(m) })),
             ...(modules.length > 0 ? [{ href: "/modules", icon: Blocks, key: "modules" as const }] : []),
             navItems[navItems.length - 1],
           ].map((item) => {
@@ -222,6 +238,7 @@ export function Sidebar() {
               pathname === item.href || pathname.startsWith(item.href + "/");
             const Icon = item.icon;
             const isKnowledge = item.href === "/knowledge";
+            const label = "key" in item ? t.common.nav[item.key] : item.label;
             return (
               <Link
                 key={item.href}
@@ -233,7 +250,7 @@ export function Sidebar() {
                 }`}
               >
                 <Icon size={16} />
-                <span className="flex-1">{t.common.nav[item.key]}</span>
+                <span className="flex-1">{label}</span>
                 {isKnowledge && pendingCount > 0 && (
                   <span
                     className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-accent/15 text-accent"
