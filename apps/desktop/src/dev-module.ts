@@ -25,7 +25,6 @@ export interface DevModuleApi {
 }
 
 interface DevImpl {
-  MODULES: string[];
   register: (deps: DevModuleDeps) => DevModuleApi;
 }
 
@@ -40,8 +39,21 @@ function loadImpl(): DevImpl | null {
 
 const impl = loadImpl();
 
+// The set of modules compiled into THIS binary. The overlay (CI or
+// scripts/sync-modules.sh) writes built-in-modules.generated.ts listing the
+// module folders it applied — so a new module is recognized WITHOUT editing
+// any other module's code. Absent (public source build) → no modules.
+function builtInList(): readonly string[] {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return (require("./built-in-modules.generated") as { BUILT_IN: string[] }).BUILT_IN ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export function builtInModules(): readonly string[] {
-  return impl?.MODULES ?? [];
+  return builtInList();
 }
 
 export function loadDevModule(deps: DevModuleDeps): DevModuleApi | null {

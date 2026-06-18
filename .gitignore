@@ -66,3 +66,4 @@ apps/web/src/components/source-control-panel.tsx
 apps/web/src/lib/anatomize-impl/
 apps/web/src/app/api/anatomize/
 apps/web/src/app/insights/
+apps/desktop/src/built-in-modules.generated.ts
