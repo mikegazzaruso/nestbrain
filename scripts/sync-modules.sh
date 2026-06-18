@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
 # Copy the proprietary module implementations from the sibling
-# nestbrain-modules checkout into this working tree. Desktop impl lands in a
-# gitignored dir; web impls OVERWRITE tracked stub files, so we mark those
-# skip-worktree to keep `git status` clean. Run after pulling nestbrain-modules.
-# Undo: scripts/unsync-modules.sh
+# nestbrain-modules checkout into this working tree. The private repo groups
+# files by module (modules/<name>/...); inside each module the layout mirrors
+# this monorepo, so the overlay is a plain copy. Desktop impl lands in a
+# gitignored dir; web impls OVERWRITE tracked stub files, so those are marked
+# skip-worktree to keep `git status` clean. Undo: scripts/unsync-modules.sh
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="$ROOT/../nestbrain-modules"
-[ -d "$SRC/apps" ] || { echo "nestbrain-modules not found at $SRC" >&2; exit 1; }
+[ -d "$SRC/modules" ] || { echo "nestbrain-modules not found at $SRC" >&2; exit 1; }
 
-rsync -a --delete "$SRC/apps/desktop/src/dev-impl/" "$ROOT/apps/desktop/src/dev-impl/"
-rsync -a "$SRC/apps/web/src/" "$ROOT/apps/web/src/"
+for mod in "$SRC"/modules/*/; do
+  [ -d "$mod" ] || continue
+  echo "  overlay: $(basename "$mod")"
+  rsync -a "$mod" "$ROOT/"
+done
 
 cd "$ROOT"
 STUBS=(
@@ -22,4 +26,4 @@ STUBS=(
   apps/web/src/components/project-filter.tsx
 )
 for f in "${STUBS[@]}"; do git update-index --skip-worktree "$f"; done
-echo "✅ modules synced (desktop dev-impl + web dev UI; stubs marked skip-worktree)"
+echo "✅ modules synced (per-module overlay; stubs marked skip-worktree)"

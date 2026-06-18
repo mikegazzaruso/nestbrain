@@ -66,7 +66,7 @@ jobs:
       - name: Apply modules overlay
         shell: bash
         run: |
-          cp -R .modules/apps/. apps/
+          for mod in .modules/modules/*/; do cp -R "$mod." ./; done
           rm -rf .modules
           ls apps/desktop/src/dev-impl/
 
@@ -177,7 +177,7 @@ jobs:
       - name: Apply modules overlay
         shell: bash
         run: |
-          cp -R .modules/apps/. apps/
+          for mod in .modules/modules/*/; do cp -R "$mod." ./; done
           rm -rf .modules
           ls apps/desktop/src/dev-impl/
 
