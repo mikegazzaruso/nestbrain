@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -123,6 +123,64 @@ describe("Nests, reader role, Projects opt-out", () => {
     // Opted-out Projects entry survived the commit and wasn't downloaded.
     expect(backend.files["Projects/app/main.ts"]).toBeDefined();
     expect(existsSync(join(a, "Library", "Knowledge", "Projects"))).toBe(false);
+  });
+
+  it("a peer with an EMPTY shared subtree never deletes it — it downloads it (regression: Projects wipe)", async () => {
+    const backend = new FakeBackend() as unknown as SyncBackend & FakeBackend;
+    // Server already holds A's project (and B's base records it too — the exact
+    // state that made diffFiles emit delete-remote and wipe everyone's data).
+    backend.version = 1;
+    backend.files = { "Projects/app/main.ts": { hash: "h-proj", size: 1, mtime: 1 } };
+    backend.blobs.set("h-proj", new TextEncoder().encode("x"));
+
+    await mkdir(join(b, "Library", "Knowledge"), { recursive: true });
+    await mkdir(join(b, "Projects"), { recursive: true }); // opted IN, but empty
+    const roots: SyncRoot[] = [
+      { dir: join(b, "Library", "Knowledge"), prefix: "", index: true },
+      { dir: join(b, "Projects"), prefix: "Projects/", index: false },
+    ];
+    const base: FileMap = { "Projects/app/main.ts": { hash: "h-proj", size: 1, mtime: 1 } };
+
+    const res = await runSync(backend, "ws", roots, base, 5, false, [], join(b, ".trash"));
+
+    // The project is preserved on the server AND pulled to B — not deleted.
+    expect(backend.files["Projects/app/main.ts"]).toBeDefined();
+    expect(existsSync(join(b, "Projects", "app", "main.ts"))).toBe(true);
+    expect(res.downloaded).toBeGreaterThanOrEqual(1);
+  });
+
+  it("aborts instead of mass-deleting (circuit breaker)", async () => {
+    const backend = new FakeBackend() as unknown as SyncBackend & FakeBackend;
+    backend.version = 1;
+    const many: FileMap = {};
+    for (let i = 0; i < 60; i++) many[`f${i}.md`] = { hash: `h${i}`, size: 1, mtime: 1 };
+    backend.files = { ...many };
+
+    await mkdir(join(a, "K"), { recursive: true }); // local wiki is empty → 60 delete-remote
+    const roots: SyncRoot[] = [{ dir: join(a, "K"), prefix: "", index: true }];
+
+    await expect(runSync(backend, "ws", roots, many, 5, false, [], join(a, ".trash"))).rejects.toThrow(
+      /refusing to delete/,
+    );
+    // Nothing was committed — the server still has every file.
+    expect(Object.keys(backend.files)).toHaveLength(60);
+  });
+
+  it("a legit local delete is quarantined to .trash, never hard-removed", async () => {
+    const backend = new FakeBackend() as unknown as SyncBackend & FakeBackend;
+    await mkdir(join(a, "K"), { recursive: true });
+    await writeFile(join(a, "K", "x.md"), "# x");
+    const roots: SyncRoot[] = [{ dir: join(a, "K"), prefix: "", index: true }];
+
+    const r1 = await runSync(backend, "ws", roots, {}, 5, false, [], join(a, ".trash"));
+    // A peer deletes x.md on the server.
+    backend.files = {};
+    backend.version += 1;
+    await runSync(backend, "ws", roots, r1.base, 5, false, [], join(a, ".trash"));
+
+    expect(existsSync(join(a, "K", "x.md"))).toBe(false); // gone from its place
+    const trashed = await readdir(join(a, ".trash"), { recursive: true }).catch(() => [] as string[]);
+    expect(trashed.some((f) => String(f).endsWith("x.md"))).toBe(true); // but recoverable
   });
 
   it("reader is pull-only: downloads arrive, local edits never reach the server", async () => {

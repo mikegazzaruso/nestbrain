@@ -1,7 +1,29 @@
 import { createHash } from "node:crypto";
-import { readdir, readFile, writeFile, mkdir, stat, rm } from "node:fs/promises";
+import { readdir, readFile, writeFile, mkdir, stat, rm, rename } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join, relative, dirname, sep } from "node:path";
-import { diffFiles, type FileMap, type SyncBackend } from "@nestbrain/sync";
+import { diffFiles, type FileMap, type SyncAction, type SyncBackend } from "@nestbrain/sync";
+
+// A team sync must NEVER hard-delete and never mass-delete: a single peer that
+// lacks a subtree once wiped hundreds of files across everyone's machines.
+//   1. deletes go to <workspace>/.trash/ (recoverable), never `rm`;
+//   2. a root the local side has NO files under is treated as "I don't have it
+//      yet", not "I deleted all of it" — its deletes become downloads;
+//   3. a sync that would delete more than this many files aborts loudly.
+const MASS_DELETE_LIMIT = 50;
+
+/** Move a file into <workspace>/.trash/<stamp>/<serverPath> instead of rm. */
+async function trashLocal(trashRoot: string, absFile: string, serverPath: string): Promise<void> {
+  try {
+    if (!existsSync(absFile)) return;
+    const dest = join(trashRoot, serverPath);
+    await mkdir(dirname(dest), { recursive: true });
+    await rm(dest, { force: true, recursive: true }).catch(() => {});
+    await rename(absFile, dest);
+  } catch {
+    // Best-effort: a delete must never throw and abort the whole sync.
+  }
+}
 
 // Drives the GPL `diffFiles` 3-way reconcile against a SyncBackend: walk the
 // local wiki folder, diff base/local/remote, transfer blobs, write keep-both
@@ -127,11 +149,14 @@ export async function runSync(
   maxRetries = 5,
   readOnly = false,
   skipPrefixes: string[] = [],
+  trashRoot = "",
 ): Promise<SyncResult> {
   // Server paths under a skipped prefix (e.g. "Projects/" when this device
   // opted out) are not ours to manage: they're excluded from the diff and
   // carried through commits untouched, so opting out never deletes them.
   const skipped = (p: string) => skipPrefixes.some((s) => p.startsWith(s));
+  // Where local deletes are quarantined (never hard-rm). One dir per run.
+  const trash = join(trashRoot || join(roots[0]?.dir ?? "", ".trash"), `team-${Date.now()}`);
   let cur = base;
   if (skipPrefixes.length) {
     cur = Object.fromEntries(Object.entries(cur).filter(([p]) => !skipped(p)));
@@ -152,6 +177,34 @@ export async function runSync(
     const remote = await backend.getManifest(workspaceId);
     let actions = diffFiles(cur, local, remote.files);
     if (skipPrefixes.length) actions = actions.filter((a) => !skipped(a.path));
+
+    // SAFETY 1 — empty-root guard. A non-root prefix (Team/, Projects/) the
+    // local side has ZERO files under means "I don't have this subtree", not
+    // "I deleted all of it". Turn its destructive deletes into downloads so a
+    // peer that lacks a subtree can never wipe it for everyone. (This is the
+    // bug that deleted shared Projects when a second member had none locally.)
+    const emptyPrefixes = roots
+      .filter((r) => r.prefix !== "" && !Object.keys(local).some((k) => k.startsWith(r.prefix)))
+      .map((r) => r.prefix);
+    if (emptyPrefixes.length) {
+      actions = actions.map((a): SyncAction =>
+        (a.action === "delete-remote" || a.action === "delete-local") &&
+        emptyPrefixes.some((pre) => a.path.startsWith(pre))
+          ? { path: a.path, action: "download" }
+          : a,
+      );
+    }
+
+    // SAFETY 2 — mass-delete circuit breaker. Never let one sync remove a large
+    // number of files; abort loudly instead so the user can investigate (e.g.
+    // a device that hasn't pulled the shared folders yet) before any data goes.
+    const deletions = actions.filter((a) => a.action === "delete-local" || a.action === "delete-remote").length;
+    if (deletions > MASS_DELETE_LIMIT) {
+      throw new Error(
+        `sync aborted: refusing to delete ${deletions} files in one sync (limit ${MASS_DELETE_LIMIT}). ` +
+          `Make sure every device has the shared folders before re-syncing.`,
+      );
+    }
 
     // Nothing differs between local and remote → don't churn a new manifest
     // version (important for the idle background poll). Adopt remote as base.
@@ -182,7 +235,7 @@ export async function runSync(
           downloaded++;
           changed.push(cpath);
         } else if (a.action === "delete-local") {
-          await rm(join(root.dir, rel), { force: true });
+          await trashLocal(trash, join(root.dir, rel), a.path);
         }
       }
       return { version: remote.version, base: remote.files, conflicts: [], uploaded: 0, downloaded, changed };
@@ -228,7 +281,7 @@ export async function runSync(
         conflicts.push(cpath);
         changed.push(cpath);
       } else if (a.action === "delete-local") {
-        await rm(join(root.dir, rel), { force: true });
+        await trashLocal(trash, join(root.dir, rel), a.path);
       }
       // delete-remote → simply omit from newFiles
     }

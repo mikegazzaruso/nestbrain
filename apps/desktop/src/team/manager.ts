@@ -345,7 +345,7 @@ export class TeamManager {
         // The Projects/ subtree only syncs when this device opted in — without
         // the root, its server entries must pass through untouched.
         const skipPrefixes = ws.isGlobal !== false && !includeProjects ? ["Projects/"] : [];
-        const result = await runSync(backend, ws.id, roots, base, 5, ws.role === "reader", skipPrefixes);
+        const result = await runSync(backend, ws.id, roots, base, 5, ws.role === "reader", skipPrefixes, join(root, ".trash"));
         cfg.bases = { ...(cfg.bases ?? {}), [ws.id]: result.base };
         uploaded += result.uploaded;
         downloaded += result.downloaded;
