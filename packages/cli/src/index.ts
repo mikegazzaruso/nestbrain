@@ -28,6 +28,7 @@ import {
 } from "@nestbrain/core";
 import type { LLMProviderInterface } from "@nestbrain/core";
 import { readFile } from "node:fs/promises";
+import { saveSession, resumeSession } from "./session.js";
 
 const program = new Command();
 
@@ -651,6 +652,44 @@ projects
       console.log(`Managed:   ${s.ours ? `yes (v${s.version})` : "no"}`);
     } catch (error) {
       console.error(`✗ ${error instanceof Error ? error.message : error}`);
+      process.exit(1);
+    }
+  });
+
+// ===== Session handoff (cross-machine) =====
+const session = program
+  .command("session")
+  .description("Cross-machine session handoff: capture a project's state to resume elsewhere");
+
+session
+  .command("save")
+  .description("Create or enrich the project's session summary (compresses changes since the last save)")
+  .option("-p, --project <path>", "Project directory (default: current dir)", process.cwd())
+  .action(async (options) => {
+    try {
+      const dir = resolve(options.project);
+      const llm = getLLM(resolveWorkspace());
+      const path = await saveSession(dir, { llm, log: (m) => console.log(m) });
+      console.log(`\n✔ Session summary saved → ${path}`);
+    } catch (e) {
+      console.error(e instanceof Error ? e.message : String(e));
+      process.exit(1);
+    }
+  });
+
+session
+  .command("resume")
+  .description("Print a resumption briefing from the project's session summary (run on the machine taking over)")
+  .option("-p, --project <path>", "Project directory (default: current dir)", process.cwd())
+  .action(async (options) => {
+    try {
+      const dir = resolve(options.project);
+      const llm = getLLM(resolveWorkspace());
+      // Progress goes to stderr so stdout is a clean briefing the caller can pipe.
+      const briefing = await resumeSession(dir, { llm, log: (m) => console.error(m) });
+      console.log(briefing);
+    } catch (e) {
+      console.error(e instanceof Error ? e.message : String(e));
       process.exit(1);
     }
   });
