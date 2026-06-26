@@ -1,6 +1,6 @@
 {
   "name": "nestbrain",
-  "version": "1.14.3",
+  "version": "1.15.0",
   "private": true,
   "description": "LLM-powered personal knowledge base platform",
   "scripts": {
