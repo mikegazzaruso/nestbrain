@@ -10,7 +10,14 @@ import { diffFiles, type FileMap, type SyncBackend } from "@nestbrain/sync";
 // `vector-index.json` is the per-device LOCAL embeddings index — it must never
 // be shared (it's rebuilt locally from the synced articles, and it's large/
 // churny). Everything else under Library/Knowledge is structured wiki content.
-const IGNORE = new Set([".git", "node_modules", ".nestbrain", ".obsidian", "vector-index.json"]);
+// Never walked or synced: VCS/state dirs plus build/output artifacts. Syncing
+// a project's build output to the team server is slow and pointless (it's
+// regenerable and often large/binary). Dot-dirs (.next, .turbo, .venv, …) are
+// already skipped by the leading-"." check in walkLocal.
+const IGNORE = new Set([
+  ".git", "node_modules", ".nestbrain", ".obsidian", "vector-index.json",
+  "dist", "build", "out", "target", "__pycache__", "coverage",
+]);
 
 /**
  * Walk the wiki folder into a path → {hash(sha256), size, mtime} map.
