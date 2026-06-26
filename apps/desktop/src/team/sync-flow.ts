@@ -36,7 +36,11 @@ export async function walkLocal(
     const full = join(dir, e.name);
     if (e.isDirectory()) {
       await walkLocal(full, cache, root, out, extraIgnore);
-    } else {
+    } else if (e.isFile()) {
+      // Only real files are synced. Symlinks (a Dirent symlink reports neither
+      // isFile nor isDirectory for its target) and other special entries are
+      // skipped — following a symlink-to-directory would `readFile` a directory
+      // and throw EISDIR, and could loop. This is what broke Projects sharing.
       const rel = relative(root, full).split(sep).join("/");
       const st = await stat(full);
       const mtime = Math.floor(st.mtimeMs / 1000);
