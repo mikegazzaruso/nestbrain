@@ -10,6 +10,7 @@ const en = {
     openaiDesc: "Uses OpenAI API. Requires an API key.",
     ollamaDesc: "Local models on your machine. Private, no API key.",
     model: "Model",
+    latest: "latest",
     claudeAuthBefore: "Authenticated via your Claude CLI session. Run",
     claudeAuthAfter: "in terminal if needed.",
     apiKey: "API Key",
@@ -45,6 +46,8 @@ const en = {
     title: "Compilation",
     autoTitle: "Auto-compile after ingest",
     autoDesc: "Automatically compile the knowledge base after adding new sources.",
+    atomsTitle: "Auto-generate atoms from commits",
+    atomsDesc: "On each git commit, extract knowledge atoms into the review queue. Turn off to add atoms only manually or from ingested files.",
   },
 
   save: {
@@ -166,6 +169,7 @@ const it: typeof en = {
     openaiDesc: "Usa l'API di OpenAI. Richiede una API key.",
     ollamaDesc: "Modelli locali sulla tua macchina. Privato, senza API key.",
     model: "Modello",
+    latest: "ultimo",
     claudeAuthBefore: "Autenticato tramite la tua sessione Claude CLI. Se necessario, esegui",
     claudeAuthAfter: "nel terminale.",
     apiKey: "API Key",
@@ -201,6 +205,8 @@ const it: typeof en = {
     title: "Compilazione",
     autoTitle: "Compilazione automatica dopo l'ingest",
     autoDesc: "Compila automaticamente la knowledge base dopo l'aggiunta di nuove fonti.",
+    atomsTitle: "Genera atom dai commit",
+    atomsDesc: "A ogni commit git, estrae atom di conoscenza nella coda di revisione. Disattiva per aggiungere atom solo manualmente o da file importati.",
   },
 
   save: {
@@ -322,6 +328,7 @@ const fr: typeof en = {
     openaiDesc: "Utilise l'API OpenAI. Nécessite une clé API.",
     ollamaDesc: "Modèles locaux sur votre machine. Privé, sans clé API.",
     model: "Modèle",
+    latest: "dernier",
     claudeAuthBefore: "Authentifié via votre session Claude CLI. Si besoin, exécutez",
     claudeAuthAfter: "dans le terminal.",
     apiKey: "Clé API",
@@ -357,6 +364,8 @@ const fr: typeof en = {
     title: "Compilation",
     autoTitle: "Compilation automatique après ingestion",
     autoDesc: "Compile automatiquement la base de connaissances après l'ajout de nouvelles sources.",
+    atomsTitle: "Générer des atomes depuis les commits",
+    atomsDesc: "À chaque commit git, extrait des atomes de connaissance dans la file de revue. Désactivez pour ajouter des atomes uniquement manuellement ou depuis des fichiers importés.",
   },
 
   save: {
@@ -478,6 +487,7 @@ const es: typeof en = {
     openaiDesc: "Usa la API de OpenAI. Requiere una clave de API.",
     ollamaDesc: "Modelos locales en tu máquina. Privado, sin clave de API.",
     model: "Modelo",
+    latest: "último",
     claudeAuthBefore: "Autenticado mediante tu sesión de Claude CLI. Si es necesario, ejecuta",
     claudeAuthAfter: "en la terminal.",
     apiKey: "Clave de API",
@@ -513,6 +523,8 @@ const es: typeof en = {
     title: "Compilación",
     autoTitle: "Compilar automáticamente tras la ingesta",
     autoDesc: "Compila automáticamente la base de conocimiento después de añadir nuevas fuentes.",
+    atomsTitle: "Generar átomos desde los commits",
+    atomsDesc: "En cada commit de git, extrae átomos de conocimiento a la cola de revisión. Desactiva para añadir átomos solo manualmente o desde archivos importados.",
   },
 
   save: {

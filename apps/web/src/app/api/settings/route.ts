@@ -37,6 +37,10 @@ export async function PUT(request: NextRequest) {
             : current.llm.openaiApiKey,
       },
       autoCompile: body.autoCompile ?? current.autoCompile ?? false,
+      autoExtractAtoms:
+        typeof body.autoExtractAtoms === "boolean"
+          ? body.autoExtractAtoms
+          : (current.autoExtractAtoms ?? true),
       onboardingCompleted:
         typeof body.onboardingCompleted === "boolean"
           ? body.onboardingCompleted

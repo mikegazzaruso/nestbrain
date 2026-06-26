@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Blocks, FolderGit2, Brain } from "lucide-react";
+import { Blocks, FolderGit2, Brain, ChevronDown } from "lucide-react";
 import { useModules } from "@/lib/modules-context";
 import { useT } from "@/lib/app-i18n";
+import { moduleSettings } from "@/lib/module-settings";
 
 // Module Settings — one card per ACTIVE module, each hosting its own
 // configuration. Modules are Enterprise add-ons: this page only exists in
@@ -18,6 +19,14 @@ const CATALOG: Record<string, { icon: React.ReactNode; name: string }> = {
 export default function ModulesPage() {
   const { modules, loaded } = useModules();
   const { t } = useT();
+  // Every module block is collapsible and starts collapsed.
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const toggle = (id: string) =>
+    setOpen((s) => {
+      const n = new Set(s);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
 
   return (
     <div className="max-w-3xl mx-auto w-full px-8 py-10">
@@ -37,17 +46,26 @@ export default function ModulesPage() {
 
       <div className="space-y-5">
         {modules.map((id) => {
-          const meta = CATALOG[id] ?? { icon: <Blocks size={20} />, name: id };
+          const ext = moduleSettings[id];
+          const meta =
+            CATALOG[id] ??
+            (ext ? { icon: ext.icon, name: ext.name } : { icon: <Blocks size={20} />, name: id });
           const tagline =
             (t.team.modulesPage.taglines as Record<string, string>)[id] ??
             t.team.modulesPage.fallbackTagline;
+          const isOpen = open.has(id);
           return (
             <div key={id} className="bg-card border border-border rounded-2xl overflow-hidden">
-              <div className="flex items-center gap-3.5 px-6 py-4 border-b border-border bg-card-hover/40">
+              <button
+                type="button"
+                onClick={() => toggle(id)}
+                aria-expanded={isOpen}
+                className={`w-full flex items-center gap-3.5 px-6 py-4 bg-card-hover/40 hover:bg-card-hover/70 transition-colors text-left ${isOpen ? "border-b border-border" : ""}`}
+              >
                 <span className="w-9 h-9 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0">
                   {meta.icon}
                 </span>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <h2 className="font-semibold text-[15px]">{meta.name}</h2>
                     <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400">
@@ -56,16 +74,24 @@ export default function ModulesPage() {
                   </div>
                   <p className="text-[11.5px] text-muted/70 leading-snug">{tagline}</p>
                 </div>
-              </div>
-              <div className="px-6 py-5">
-                {id === "dev" ? (
-                  <DevModuleSettings />
-                ) : id === "anatomize" ? (
-                  <AnatomizeModuleSettings />
-                ) : (
-                  <p className="text-xs text-muted/60">{t.team.modulesPage.noSettings}</p>
-                )}
-              </div>
+                <ChevronDown
+                  size={18}
+                  className={`text-muted shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                />
+              </button>
+              {isOpen && (
+                <div className="px-6 py-5">
+                  {id === "dev" ? (
+                    <DevModuleSettings />
+                  ) : id === "anatomize" ? (
+                    <AnatomizeModuleSettings />
+                  ) : ext ? (
+                    <ext.Panel />
+                  ) : (
+                    <p className="text-xs text-muted/60">{t.team.modulesPage.noSettings}</p>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}

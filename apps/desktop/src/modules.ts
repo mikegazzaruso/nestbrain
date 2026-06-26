@@ -19,31 +19,39 @@ export const MAX_ACTIVE_MODULES = 5;
 
 /** Decode `module:*` features from a signed license token (payload.features). */
 export function modulesFromLicense(token: string | null): string[] {
-  if (!token) return [];
-  try {
-    const payloadB64 = token.split(".")[0];
-    if (!payloadB64) return [];
-    const payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf8")) as {
-      features?: unknown;
-      exp?: unknown;
-    };
-    if (typeof payload.exp === "number" && Date.now() / 1000 > payload.exp) return [];
-    const feats = Array.isArray(payload.features) ? (payload.features as string[]) : [];
-    // Dev override: in a dev build, NESTBRAIN_DEV_MODULES="a,b" lets a module
-    // author see their work without a licensed Team Server. Inert in
-    // production (gated on NESTBRAIN_DEV) and still intersected with the
-    // built-in set, so it can't conjure a module that isn't compiled in.
-    const devUnlocked =
-      process.env.NESTBRAIN_DEV && process.env.NESTBRAIN_DEV_MODULES
-        ? process.env.NESTBRAIN_DEV_MODULES.split(",").map((s) => s.trim()).filter(Boolean)
-        : [];
-    // Active = built into this binary ∩ (licensed ∪ dev-unlocked). An org may
-    // own any number of modules, but at most MAX_ACTIVE_MODULES load
-    // simultaneously on a client; until the selection UI ships, the first N win.
-    return builtInModules()
-      .filter((m) => feats.includes(`module:${m}`) || devUnlocked.includes(m))
-      .slice(0, MAX_ACTIVE_MODULES);
-  } catch {
-    return [];
+  // Dev override: in a dev build, NESTBRAIN_DEV_MODULES="a,b" lets a module
+  // author see their work without a licensed Team Server — so it must apply
+  // even when signed out (no token). Inert in production (gated on
+  // NESTBRAIN_DEV) and still intersected with the built-in set below, so it
+  // can't conjure a module that isn't compiled in.
+  const devUnlocked =
+    process.env.NESTBRAIN_DEV && process.env.NESTBRAIN_DEV_MODULES
+      ? process.env.NESTBRAIN_DEV_MODULES.split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
+
+  let feats: string[] = [];
+  if (token) {
+    try {
+      const payloadB64 = token.split(".")[0];
+      if (payloadB64) {
+        const payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf8")) as {
+          features?: unknown;
+          exp?: unknown;
+        };
+        const expired = typeof payload.exp === "number" && Date.now() / 1000 > payload.exp;
+        if (!expired && Array.isArray(payload.features)) feats = payload.features as string[];
+      }
+    } catch {
+      feats = [];
+    }
   }
+
+  if (feats.length === 0 && devUnlocked.length === 0) return [];
+
+  // Active = built into this binary ∩ (licensed ∪ dev-unlocked). An org may
+  // own any number of modules, but at most MAX_ACTIVE_MODULES load
+  // simultaneously on a client; until the selection UI ships, the first N win.
+  return builtInModules()
+    .filter((m) => feats.includes(`module:${m}`) || devUnlocked.includes(m))
+    .slice(0, MAX_ACTIVE_MODULES);
 }

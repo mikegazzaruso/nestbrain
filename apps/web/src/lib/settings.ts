@@ -10,6 +10,8 @@ export interface AppSettings {
     ollamaModel: string;
   };
   autoCompile?: boolean;
+  /** Auto-generate knowledge atoms from git commits (post-commit hook). */
+  autoExtractAtoms?: boolean;
   onboardingCompleted?: boolean;
 }
 
@@ -22,6 +24,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     ollamaModel: "",
   },
   autoCompile: false,
+  autoExtractAtoms: true,
   onboardingCompleted: false,
 };
 
@@ -41,6 +44,7 @@ export async function loadSettings(): Promise<AppSettings> {
       ...saved,
       llm: { ...DEFAULT_SETTINGS.llm, ...saved.llm },
       autoCompile: saved.autoCompile ?? DEFAULT_SETTINGS.autoCompile,
+      autoExtractAtoms: saved.autoExtractAtoms ?? DEFAULT_SETTINGS.autoExtractAtoms,
       onboardingCompleted: saved.onboardingCompleted ?? DEFAULT_SETTINGS.onboardingCompleted,
     };
   } catch {

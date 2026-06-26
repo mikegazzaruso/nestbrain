@@ -46,6 +46,7 @@ export default function SettingsPage() {
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(false);
   const [autoCompile, setAutoCompile] = useState(false);
+  const [autoExtractAtoms, setAutoExtractAtoms] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -70,6 +71,7 @@ export default function SettingsPage() {
           setOllamaModel(data.llm.ollamaModel ?? "");
         }
         setAutoCompile(data.autoCompile ?? false);
+        setAutoExtractAtoms(data.autoExtractAtoms ?? true);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -153,6 +155,7 @@ export default function SettingsPage() {
             ollamaModel,
           },
           autoCompile,
+          autoExtractAtoms,
         }),
       });
       setSaved(true);
@@ -268,9 +271,11 @@ export default function SettingsPage() {
                   onChange={(e) => setClaudeModel(e.target.value)}
                   className="w-full px-3 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20"
                 >
-                  <option value="sonnet">Claude Sonnet 4.6</option>
-                  <option value="opus">Claude Opus 4.6</option>
-                  <option value="haiku">Claude Haiku 4.5</option>
+                  {/* Aliases — the claude CLI resolves each to the newest
+                      release of that tier, so this never needs version bumps. */}
+                  <option value="opus">Claude Opus ({t.settings.llm.latest})</option>
+                  <option value="sonnet">Claude Sonnet ({t.settings.llm.latest})</option>
+                  <option value="haiku">Claude Haiku ({t.settings.llm.latest})</option>
                 </select>
               </div>
               <p className="text-[11px] text-muted/40 leading-relaxed">
@@ -438,7 +443,7 @@ export default function SettingsPage() {
           <h2 className="text-sm font-medium text-muted/70 uppercase tracking-wider mb-4">
             {t.settings.compile.title}
           </h2>
-          <div className="p-5 rounded-xl bg-card border border-border">
+          <div className="p-5 rounded-xl bg-card border border-border space-y-5">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium">{t.settings.compile.autoTitle}</p>
@@ -448,13 +453,34 @@ export default function SettingsPage() {
               </div>
               <button
                 onClick={() => setAutoCompile(!autoCompile)}
-                className={`relative w-10 h-[22px] rounded-full transition-colors ${
+                className={`relative w-10 h-[22px] rounded-full transition-colors shrink-0 ${
                   autoCompile ? "bg-accent" : "bg-border"
                 }`}
               >
                 <span
                   className={`absolute top-[3px] h-4 w-4 rounded-full bg-white transition-transform ${
                     autoCompile ? "left-[22px]" : "left-[3px]"
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between border-t border-border pt-5">
+              <div>
+                <p className="text-sm font-medium">{t.settings.compile.atomsTitle}</p>
+                <p className="text-[11px] text-muted/60 leading-relaxed mt-1">
+                  {t.settings.compile.atomsDesc}
+                </p>
+              </div>
+              <button
+                onClick={() => setAutoExtractAtoms(!autoExtractAtoms)}
+                className={`relative w-10 h-[22px] rounded-full transition-colors shrink-0 ${
+                  autoExtractAtoms ? "bg-accent" : "bg-border"
+                }`}
+              >
+                <span
+                  className={`absolute top-[3px] h-4 w-4 rounded-full bg-white transition-transform ${
+                    autoExtractAtoms ? "left-[22px]" : "left-[3px]"
                   }`}
                 />
               </button>

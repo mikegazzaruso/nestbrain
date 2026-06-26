@@ -15,7 +15,9 @@ for mod in "$SRC"/modules/*/; do
   [ -d "$mod" ] || continue
   id="$(basename "$mod")"
   echo "  overlay: $id"
-  rsync -a "$mod" "$ROOT/"
+  # NO -t: synced files must get a FRESH mtime, otherwise next dev's file
+  # watcher (mtime-based) never recompiles them and serves stale code.
+  rsync -rlpgoD "$mod" "$ROOT/"
   IDS+=("\"$id\"")
 done
 
@@ -28,6 +30,7 @@ GEN="$ROOT/apps/desktop/src/built-in-modules.generated.ts"
 
 cd "$ROOT"
 STUBS=(
+  apps/web/src/lib/module-settings.tsx
   apps/web/src/lib/terminal-context.tsx
   apps/web/src/lib/git-status-context.tsx
   apps/web/src/components/terminal-panel.tsx

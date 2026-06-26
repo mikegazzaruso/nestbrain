@@ -2,7 +2,7 @@
 
 import { Command } from "commander";
 import { basename, resolve } from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { execFileSync, execSync, spawnSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
@@ -133,7 +133,48 @@ function resolveDataPaths(): { raw: string; wiki: string } {
 
 const { raw: DATA_RAW, wiki: DATA_WIKI } = resolveDataPaths();
 
-function getLLM(): LLMProviderInterface {
+interface WorkspaceSettings {
+  llm?: {
+    provider?: "claude-cli" | "openai" | "ollama";
+    openaiApiKey?: string;
+    openaiModel?: string;
+    claudeModel?: string;
+    ollamaModel?: string;
+  };
+  autoExtractAtoms?: boolean;
+}
+
+/** Read the app Settings (provider/model + flags) from the workspace. */
+function loadWorkspaceSettings(workspace?: string): WorkspaceSettings | null {
+  try {
+    const ws = workspace ?? resolveWorkspace();
+    const p = resolve(ws, ".nestbrain", "settings.json");
+    if (!existsSync(p)) return null;
+    return JSON.parse(readFileSync(p, "utf-8")) as WorkspaceSettings;
+  } catch {
+    return null;
+  }
+}
+
+// Resolve the LLM from the workspace Settings — the provider + model the user
+// picked in the app. Falls back to the claude-cli default when there are no
+// settings (e.g. a bare CLI checkout with no app workspace).
+function getLLM(workspace?: string): LLMProviderInterface {
+  const llm = loadWorkspaceSettings(workspace)?.llm;
+  if (llm?.provider) {
+    const model =
+      llm.provider === "claude-cli"
+        ? llm.claudeModel || process.env.NESTBRAIN_MODEL || "sonnet"
+        : llm.provider === "ollama"
+          ? llm.ollamaModel || ""
+          : llm.openaiModel || "gpt-4o";
+    return createProvider({
+      provider: llm.provider,
+      model,
+      maxTurns: 5,
+      apiKey: llm.provider === "openai" ? llm.openaiApiKey || process.env.OPENAI_API_KEY : undefined,
+    });
+  }
   return createProvider({
     provider: "claude-cli",
     model: process.env.NESTBRAIN_MODEL ?? "sonnet",
@@ -327,7 +368,11 @@ knowledge
       const repoPath = resolve(options.repo);
       const workspace = resolveWorkspace(options.workspace);
       const projectName = detectProjectName(repoPath, options.project);
-      const llm = getLLM();
+      if (loadWorkspaceSettings(workspace)?.autoExtractAtoms === false) {
+        console.log("  (auto-atom extraction disabled in settings — skipping)");
+        return;
+      }
+      const llm = getLLM(workspace);
       console.log(`Extracting from ${sha} (project: ${projectName})…`);
       const atoms = await extractFromCommit({
         repoPath,

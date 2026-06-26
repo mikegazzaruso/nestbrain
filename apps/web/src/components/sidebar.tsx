@@ -26,6 +26,7 @@ import { useModules } from "@/lib/modules-context";
 import { useT } from "@/lib/app-i18n";
 import { useTheme } from "@/lib/theme-context";
 import { useTerminal } from "@/lib/terminal-context";
+import { moduleSettings } from "@/lib/module-settings";
 
 const navItems = [
   { href: "/wiki", icon: BookOpen, key: "wiki" as const },
@@ -225,11 +226,12 @@ export function Sidebar() {
             ...navItems.slice(0, -1),
             ...(modules.includes("anatomize") ? [{ href: "/insights", icon: Sparkles, key: "insights" as const }] : []),
             // Generic entry for any active module without a dedicated surface
-            // (dev integrates into the existing UI; anatomize → Insights). A
-            // third-party module's page lives at /<id> — this makes it
-            // reachable without editing the sidebar.
+            // (dev integrates into the existing UI; anatomize → Insights;
+            // modules that register a settings panel live in /modules instead).
+            // A surface-less third-party module's page lives at /<id> — this
+            // makes it reachable without editing the sidebar.
             ...modules
-              .filter((m) => m !== "dev" && m !== "anatomize")
+              .filter((m) => m !== "dev" && m !== "anatomize" && !moduleSettings[m])
               .map((m) => ({ href: `/${m}`, icon: Boxes, label: prettyModule(m) })),
             ...(modules.length > 0 ? [{ href: "/modules", icon: Blocks, key: "modules" as const }] : []),
             navItems[navItems.length - 1],
