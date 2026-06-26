@@ -473,6 +473,16 @@ export class SyncEngine {
     }
 
     const localStat = await stat(localAbsPath);
+
+    // A remote FILE whose path is a local DIRECTORY is a name collision (e.g.
+    // leftover Drive content from a previous workspace synced into this tree).
+    // We can't hash or overwrite a directory with a file — skip it instead of
+    // crashing the whole sync with EISDIR, and leave the local directory intact.
+    if (localStat.isDirectory()) {
+      console.warn(`[sync] skipping ${relPath}: remote is a file but local is a directory`);
+      return { downloaded: 0, conflicts: 0 };
+    }
+
     let localMd5: string;
     if (
       localEntry?.md5 &&
