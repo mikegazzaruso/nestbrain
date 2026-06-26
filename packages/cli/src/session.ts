@@ -124,13 +124,37 @@ async function readHead(dir: string, name: string, max = 4000): Promise<string> 
 }
 
 const SYS_SAVE =
-  "You write dense, durable engineering handoff notes for resuming work on a project from another machine. " +
-  "Be concrete: architecture, where things live, current state, what is in progress, decisions and their rationale, " +
-  "gotchas, and the immediate next steps. No fluff, no preamble. Markdown.";
+  "You are a senior engineer writing the definitive handoff doc so another engineer (or AI) can take over this project on a " +
+  "different machine and be productive immediately — as if they'd been working on it all along.\n\n" +
+  "You have tools (Read, Grep, Glob, Bash). USE THEM: actually explore the repo before writing — read the entry points, the " +
+  "build/config files (package.json, *.xcodeproj/project.pbxproj, Cargo.toml, pyproject, etc.), the main modules, the README, " +
+  "and recent diffs. Do not guess from filenames.\n\n" +
+  "Then write a DENSE, concrete brief covering:\n" +
+  "• WHAT THE APP DOES — the product, for the user: what it is, what it's for, the core features and how they behave. Be specific.\n" +
+  "• HOW TO BUILD & RUN it (exact commands / targets / requirements).\n" +
+  "• ARCHITECTURE — the big picture and where each part lives, with real file paths. The key modules and their responsibilities, " +
+  "the data flow, important types/abstractions, external deps/services.\n" +
+  "• CURRENT STATE — what works, what's half-done, the active branch, known issues.\n" +
+  "• CONVENTIONS & GOTCHAS — non-obvious decisions, traps, things that will bite a newcomer.\n" +
+  "• NEXT STEPS — concrete, prioritized.\n\n" +
+  "No fluff, no preamble, no 'this appears to be'. Write what you VERIFIED from the code. Markdown.";
 
 export interface SessionDeps {
   llm: LLMProviderInterface;
   log: (m: string) => void;
+}
+
+/** Prefer the agentic path (the model reads the real code in `cwd`); fall back
+ *  to a single-turn completion for providers without tools. */
+async function complete(
+  llm: LLMProviderInterface,
+  prompt: string,
+  opts: { cwd: string; system: string; turns?: number },
+): Promise<string> {
+  if (typeof llm.agent === "function") {
+    return (await llm.agent(prompt, { cwd: opts.cwd, systemPrompt: opts.system, maxTurns: opts.turns ?? 40 })).text.trim();
+  }
+  return (await llm.ask(prompt, opts.system)).text.trim();
 }
 
 export async function saveSession(projectDir: string, { llm, log }: SessionDeps): Promise<string> {
@@ -144,21 +168,22 @@ export async function saveSession(projectDir: string, { llm, log }: SessionDeps)
   const isGit = gitOk(dir);
   const head = isGit ? git(dir, ["rev-parse", "HEAD"]) : "";
 
+  const recent = isGit ? git(dir, ["log", "--oneline", "-30"]) : "";
   let body: string;
   if (!prev) {
-    log(`Creating session summary for "${name}"…`);
-    const tree = isGit ? git(dir, ["ls-files"]).split("\n").slice(0, MAX_TREE).join("\n") : (await listFiles(dir)).join("\n");
-    const readme = await readHead(dir, "README.md");
-    const recent = isGit ? git(dir, ["log", "--oneline", "-30"]) : "";
+    log(`Exploring "${name}" and writing the session summary (reading the code)…`);
     const prompt =
-      `Project: ${name}\n\n` +
-      `Files:\n${tree}\n\n` +
-      (readme ? `README (excerpt):\n${readme}\n\n` : "") +
-      (recent ? `Recent commits:\n${recent}\n\n` : "") +
-      `Write a thorough "Project Brief" to hand this project off to another machine: what it is, the architecture and where ` +
-      `things live, the current state, anything in progress, key decisions, and the next steps. This becomes the durable summary ` +
-      `that later sessions enrich.`;
-    const brief = (await llm.ask(prompt, SYS_SAVE)).text.trim();
+      `Explore the project in the current directory ("${name}") and write its "Project Brief".\n\n` +
+      `Read the entry points, build/config files, the main source modules and the README — verify what the app DOES and how ` +
+      `it's built from the actual code, don't guess.\n\n` +
+      (recent ? `Recent commits for context:\n${recent}\n\n` : "") +
+      `Output ONLY the brief body (markdown), no preamble — it becomes the durable "## Project Brief" section.`;
+    let brief = await complete(llm, prompt, { cwd: dir, system: SYS_SAVE });
+    // Drop any chain-of-thought preamble before the first heading, and a
+    // leading "Project Brief" heading (we add our own).
+    brief = (brief.replace(/^[\s\S]*?(?=^#{1,6}\s)/m, "").trim() || brief.trim())
+      .replace(/^#{1,6}\s*Project Brief[^\n]*\n+/i, "")
+      .trim();
     body = `# Session summary — ${name}\n\n## Project Brief\n\n${brief}\n\n## Session Log\n`;
   } else {
     const last = prev.fm.lastCommit;
@@ -167,20 +192,21 @@ export async function saveSession(projectDir: string, { llm, log }: SessionDeps)
         ? git(dir, ["log", "--stat", "--no-color", `${last}..HEAD`]).slice(0, MAX_DELTA)
         : "";
     if (!delta && last === head) {
-      log("No new commits since the last summary — refreshing timestamp only.");
+      log("No new commits since the last summary — re-verifying against the code.");
     }
-    log(`Enriching session summary for "${name}" (compressing changes since last save)…`);
+    log(`Enriching the summary for "${name}" (reading the changed code, compressing the delta)…`);
     const prompt =
-      `Existing handoff for project "${name}":\n\n${prev.body}\n\n` +
+      `This is the existing handoff for the project in the current directory ("${name}"):\n\n${prev.body}\n\n` +
       (delta
-        ? `New changes since the last summary (git log --stat ${last?.slice(0, 8)}..HEAD):\n${delta}\n\n`
-        : `There are no new git commits since the last summary.\n\n`) +
+        ? `New changes since the last summary (git log --stat ${last?.slice(0, 8)}..HEAD):\n${delta}\n\n` +
+          `READ the changed files to understand them properly.\n\n`
+        : `There are no new git commits since the last summary; re-verify the brief against the current code.\n\n`) +
       `Return the FULL updated summary in markdown with exactly these sections:\n` +
-      `## Project Brief — the brief kept CURRENT (fold in anything the new changes altered).\n` +
-      `## Session Log — keep the prior entries, and PREPEND one new dated entry that COMPRESSES what changed this session ` +
-      `(like a /compress: the essence of the new work, decisions, and where it leaves off). Date it ${nowISO()}.\n` +
-      `Be concrete and dense. Do not invent changes that aren't in the delta.`;
-    body = (await llm.ask(prompt, SYS_SAVE)).text.trim();
+      `## Project Brief — kept CURRENT and just as detailed as before (fold in anything the changes altered; keep WHAT THE APP DOES, build/run, architecture with file paths, state, gotchas, next steps).\n` +
+      `## Session Log — keep all prior entries verbatim, and PREPEND one new entry dated ${nowISO()} that COMPRESSES what changed this session (the essence of the new work, decisions, and where it leaves off).\n` +
+      `Be concrete and dense. Do not invent changes that aren't in the delta or the code.`;
+    body = await complete(llm, prompt, { cwd: dir, system: SYS_SAVE });
+    body = body.replace(/^[\s\S]*?(?=^#{1,6}\s)/m, "").trim() || body.trim();
   }
 
   const fm: Frontmatter = {
@@ -196,10 +222,11 @@ export async function saveSession(projectDir: string, { llm, log }: SessionDeps)
 }
 
 const SYS_RESUME =
-  "You brief an engineer (or AI assistant) about to resume a project on a different machine. From the handoff summary " +
-  "(and any noted divergence between it and the local checkout), produce a tight resumption briefing: current state, what " +
-  "was in progress, the exact next steps, key files to open, and gotchas — so they can continue as if they never left. " +
-  "No preamble. Markdown.";
+  "You brief an engineer (or AI assistant) about to resume a project on THIS machine. You have the handoff summary plus tools " +
+  "(Read, Grep, Glob, Bash) — use them to ground the briefing in the CURRENT code in this directory (and reconcile any noted " +
+  "divergence between the summary and the local checkout). Produce a tight, concrete resumption briefing: what the app does, " +
+  "how to build/run it, the current state, what was in progress, the EXACT next steps, the key files to open (with paths), and " +
+  "the gotchas — so they continue as if they never left. No preamble. Markdown.";
 
 export async function resumeSession(projectDir: string, { llm }: SessionDeps): Promise<string> {
   const dir = resolve(projectDir);
@@ -221,8 +248,8 @@ export async function resumeSession(projectDir: string, { llm }: SessionDeps): P
       ? `NOTE: this machine's checkout has moved past the summary's commit ${fm.lastCommit?.slice(0, 8)}.\n` +
         (localChanges ? `Local commits not reflected in the summary:\n${localChanges}\n\n` : `\n`)
       : `The local checkout matches the summary's commit.\n\n`) +
-    `Produce the resumption briefing.`;
-  return (await llm.ask(prompt, SYS_RESUME)).text.trim();
+    `Verify the key claims against the current code in this directory, then produce the resumption briefing.`;
+  return await complete(llm, prompt, { cwd: dir, system: SYS_RESUME, turns: 30 });
 }
 
 export function sessionSummaryPath(projectDir: string): string {
