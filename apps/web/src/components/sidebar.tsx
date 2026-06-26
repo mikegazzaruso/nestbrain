@@ -17,6 +17,7 @@ import {
   Blocks,
   Sparkles,
   Boxes,
+  Trash2,
 } from "lucide-react";
 import { CompileIndicator } from "./compile-indicator";
 import { FileTree } from "./file-tree";
@@ -234,6 +235,7 @@ export function Sidebar() {
               .filter((m) => m !== "dev" && m !== "anatomize" && !moduleSettings[m])
               .map((m) => ({ href: `/${m}`, icon: Boxes, label: prettyModule(m) })),
             ...(modules.length > 0 ? [{ href: "/modules", icon: Blocks, key: "modules" as const }] : []),
+            { href: "/trash", icon: Trash2, label: "Trash" },
             navItems[navItems.length - 1],
           ].map((item) => {
             const isActive =

@@ -41,6 +41,17 @@ contextBridge.exposeInMainWorld("nestbrain", {
     status: (projectPath: string): Promise<{ ready: boolean }> =>
       ipcRenderer.invoke("nestbrain:projects:status", projectPath),
   },
+  trash: {
+    list: (): Promise<{ id: string; name: string; originalPath: string; size: number; deletedAt: number }[]> =>
+      ipcRenderer.invoke("nestbrain:trash:list"),
+    restore: (id: string): Promise<{ ok: true; restoredTo: string }> =>
+      ipcRenderer.invoke("nestbrain:trash:restore", id),
+    empty: (): Promise<{ ok: true }> => ipcRenderer.invoke("nestbrain:trash:empty"),
+  },
+  session: {
+    run: (mode: "save" | "resume", projectDir: string): Promise<{ ok: boolean; output: string }> =>
+      ipcRenderer.invoke("nestbrain:session:run", mode, projectDir),
+  },
   setupNestBrain: (parentPath: string) =>
     ipcRenderer.invoke("nestbrain:setupNestBrain", parentPath),
   moveOrCreateNestBrain: (parentPath: string) =>

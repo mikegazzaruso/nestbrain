@@ -18,6 +18,12 @@ import {
   ArrowRight,
   FolderInput,
   Sparkles,
+  Share2,
+  Download,
+  Loader2,
+  Copy,
+  Check,
+  X,
 } from "lucide-react";
 import { useSync } from "@/lib/sync-context";
 import { useT } from "@/lib/app-i18n";
@@ -79,6 +85,23 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
     name: string;
     isDir: boolean;
   } | null>(null);
+  const [session, setSession] = useState<{
+    mode: "save" | "resume";
+    project: string;
+    busy: boolean;
+    output: string;
+  } | null>(null);
+
+  async function runSession(mode: "save" | "resume", path: string, name: string) {
+    if (typeof window === "undefined" || !window.nestbrain?.session) return;
+    setSession({ mode, project: name, busy: true, output: "" });
+    try {
+      const r = await window.nestbrain.session.run(mode, path);
+      setSession({ mode, project: name, busy: false, output: r.output });
+    } catch (e) {
+      setSession({ mode, project: name, busy: false, output: e instanceof Error ? e.message : "Failed" });
+    }
+  }
 
   const toggle = useCallback((path: string) => {
     setExpanded((s) => {
@@ -443,6 +466,24 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
                 }
               : undefined
           }
+          onSessionSave={
+            contextMenu.isDir && isProjectDir(contextMenu.path)
+              ? () => {
+                  const { path, name } = contextMenu;
+                  setContextMenu(null);
+                  void runSession("save", path, name);
+                }
+              : undefined
+          }
+          onSessionResume={
+            contextMenu.isDir && isProjectDir(contextMenu.path)
+              ? () => {
+                  const { path, name } = contextMenu;
+                  setContextMenu(null);
+                  void runSession("resume", path, name);
+                }
+              : undefined
+          }
           syncEnabled={syncEnabled}
         />
       )}
@@ -453,6 +494,72 @@ export function FileTree({ rootPath, onNewProject }: FileTreeProps) {
           onConfirm={confirmHardDelete}
         />
       )}
+      {session && <SessionDialog session={session} onClose={() => setSession(null)} />}
+    </div>
+  );
+}
+
+function SessionDialog({
+  session,
+  onClose,
+}: {
+  session: { mode: "save" | "resume"; project: string; busy: boolean; output: string };
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const title = session.mode === "save" ? "Save session for another machine" : "Resume session here";
+  return (
+    <div
+      className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 p-6"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget && !session.busy) onClose();
+      }}
+    >
+      <div className="w-[640px] max-w-[92vw] max-h-[82vh] rounded-2xl bg-card border border-border shadow-2xl flex flex-col overflow-hidden">
+        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-border">
+          {session.mode === "save" ? <Share2 size={16} className="text-accent" /> : <Download size={16} className="text-accent" />}
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold leading-tight">{title}</h2>
+            <p className="text-[11px] text-muted font-mono truncate">{session.project}</p>
+          </div>
+          {!session.busy && (
+            <button onClick={onClose} className="ml-auto p-1 rounded text-muted hover:text-foreground hover:bg-card-hover">
+              <X size={14} />
+            </button>
+          )}
+        </div>
+        <div className="flex-1 overflow-auto p-5">
+          {session.busy ? (
+            <div className="flex items-center gap-2 text-sm text-muted">
+              <Loader2 size={16} className="animate-spin" />
+              {session.mode === "save" ? "Generating the session summary…" : "Building the resumption briefing…"}
+            </div>
+          ) : (
+            <pre className="text-[12px] leading-relaxed whitespace-pre-wrap font-mono text-foreground/90">{session.output}</pre>
+          )}
+        </div>
+        {!session.busy && (
+          <div className="flex items-center gap-2 px-5 py-3 border-t border-border">
+            {session.mode === "resume" && (
+              <button
+                onClick={() => {
+                  navigator.clipboard?.writeText(session.output).then(() => {
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1500);
+                  });
+                }}
+                className="flex items-center gap-1.5 text-xs font-semibold text-background bg-accent hover:bg-accent-hover rounded-lg px-3.5 py-2 transition-colors"
+              >
+                {copied ? <Check size={13} /> : <Copy size={13} />}
+                {copied ? "Copied" : "Copy briefing"}
+              </button>
+            )}
+            <button onClick={onClose} className="text-xs font-medium text-muted hover:text-foreground border border-border hover:border-accent/40 rounded-lg px-3.5 py-2 transition-colors">
+              Close
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -554,6 +661,8 @@ interface ContextMenuProps {
   onDelete: () => void;
   onHardDelete?: () => void;
   onMakeReady?: () => void;
+  onSessionSave?: () => void;
+  onSessionResume?: () => void;
   syncEnabled: boolean;
 }
 
@@ -565,6 +674,8 @@ function ContextMenu({
   onDelete,
   onHardDelete,
   onMakeReady,
+  onSessionSave,
+  onSessionResume,
   syncEnabled,
 }: ContextMenuProps) {
   const { t } = useT();
@@ -596,6 +707,23 @@ function ContextMenu({
             icon={<Sparkles size={12} />}
             label={t.tree.projects.makeReady}
             onClick={onMakeReady}
+          />
+          <div className="my-1 h-px bg-border/60" />
+        </>
+      )}
+      {onSessionSave && (
+        <MenuItem
+          icon={<Share2 size={12} />}
+          label="Save session for another machine"
+          onClick={onSessionSave}
+        />
+      )}
+      {onSessionResume && (
+        <>
+          <MenuItem
+            icon={<Download size={12} />}
+            label="Resume session here"
+            onClick={onSessionResume}
           />
           <div className="my-1 h-px bg-border/60" />
         </>
