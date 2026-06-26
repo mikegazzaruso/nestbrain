@@ -6,9 +6,11 @@
 //   resume — read the summary and produce a resumption briefing so a fresh
 //            assistant continues where the last session left off.
 //
-// The summary lives at <project>/.nest/session-summary.md (a dot-dir, so it
-// never pollutes git or the file tree). It carries a stable "Project Brief"
-// kept current across saves, plus a "Session Log" of dated compressed deltas.
+// The summary lives at <project>/session-summary.md — the PROJECT ROOT, not a
+// dot-dir, because the sync engines skip dot-dirs (`.nest/` never travels to
+// another machine). A "Project Brief" kept current across saves, plus a
+// "Session Log" of dated compressed deltas. Reads also fall back to the legacy
+// .nest/ location so older summaries aren't orphaned.
 
 import { execFileSync } from "node:child_process";
 import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
@@ -16,7 +18,17 @@ import { existsSync } from "node:fs";
 import { join, basename, resolve, dirname } from "node:path";
 import type { LLMProviderInterface } from "@nestbrain/core";
 
-const SUMMARY_REL = join(".nest", "session-summary.md");
+const SUMMARY_REL = "session-summary.md";
+const LEGACY_REL = join(".nest", "session-summary.md");
+
+/** Existing summary path: prefer the synced root file, else the legacy .nest/. */
+function existingSummaryPath(dir: string): string | null {
+  const root = join(dir, SUMMARY_REL);
+  if (existsSync(root)) return root;
+  const legacy = join(dir, LEGACY_REL);
+  if (existsSync(legacy)) return legacy;
+  return null;
+}
 const MAX_DELTA = 18000;
 const MAX_TREE = 500;
 
@@ -124,8 +136,9 @@ export interface SessionDeps {
 export async function saveSession(projectDir: string, { llm, log }: SessionDeps): Promise<string> {
   const dir = resolve(projectDir);
   const name = basename(dir);
-  const path = join(dir, SUMMARY_REL);
-  const existing = existsSync(path) ? await readFile(path, "utf8") : null;
+  const path = join(dir, SUMMARY_REL); // always write to the synced root file
+  const existPath = existingSummaryPath(dir);
+  const existing = existPath ? await readFile(existPath, "utf8") : null;
   const prev = existing ? parseSummary(existing) : null;
 
   const isGit = gitOk(dir);
@@ -190,10 +203,10 @@ const SYS_RESUME =
 
 export async function resumeSession(projectDir: string, { llm }: SessionDeps): Promise<string> {
   const dir = resolve(projectDir);
-  const path = join(dir, SUMMARY_REL);
-  if (!existsSync(path)) {
+  const path = existingSummaryPath(dir);
+  if (!path) {
     throw new Error(
-      `no session summary at ${SUMMARY_REL} — run \`nestbrain session save\` on the other machine (and let it sync) first`,
+      `no ${SUMMARY_REL} in this project — run \`nestbrain session save\` on the other machine (and let it sync) first`,
     );
   }
   const { fm, body } = parseSummary(await readFile(path, "utf8"));
@@ -213,5 +226,5 @@ export async function resumeSession(projectDir: string, { llm }: SessionDeps): P
 }
 
 export function sessionSummaryPath(projectDir: string): string {
-  return join(resolve(projectDir), SUMMARY_REL);
+  return existingSummaryPath(resolve(projectDir)) ?? join(resolve(projectDir), SUMMARY_REL);
 }
